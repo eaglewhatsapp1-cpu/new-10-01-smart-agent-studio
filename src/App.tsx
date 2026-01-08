@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppProvider } from "@/contexts/AppContext";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import { MainLayout } from "@/components/layout/MainLayout";
+import Index from "@/pages/Index";
 import { Dashboard } from "@/pages/Dashboard";
 import { Agents } from "@/pages/Agents";
 import { AgentConfiguration } from "@/pages/AgentConfiguration";
@@ -56,6 +57,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
+            <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route
               path="/*"
@@ -64,7 +66,7 @@ const App = () => (
                   <WorkspaceProvider>
                     <MainLayout>
                       <Routes>
-                        <Route path="/" element={<Dashboard />} />
+                        <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/agents" element={<Agents />} />
                         <Route path="/agents/:id" element={<AgentConfiguration />} />
                         <Route path="/agent-test" element={<AgentTestChat />} />
