@@ -24,7 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Bot, Play, Plus, Trash2, Zap, Save, Download, Settings2, ArrowLeft, MessageCircle, Store, Clock } from 'lucide-react';
+import { Bot, Play, Plus, Trash2, Zap, Save, Settings2, ArrowLeft, MessageCircle, Store, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { AgentNodeConfig } from '@/components/canvas/AgentNodeConfig';
@@ -32,6 +32,9 @@ import { AgentChatPanel } from '@/components/canvas/AgentChatPanel';
 import { PublishToMarketplaceDialog } from '@/components/dialogs/PublishToMarketplaceDialog';
 import { WorkflowScheduleDialog } from '@/components/scheduling/WorkflowScheduleDialog';
 import { WorkflowSelector } from '@/components/canvas/WorkflowSelector';
+import { WorkflowImportExport } from '@/components/canvas/WorkflowImportExport';
+import { CollaboratorCursors, CollaboratorAvatars } from '@/components/canvas/CollaboratorCursors';
+import { useRealtimeCollaboration } from '@/hooks/useRealtimeCollaboration';
 
 interface AgentNodeData {
   label: string;
@@ -189,6 +192,33 @@ export const MultiAgentCanvas: React.FC = () => {
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [showEditor, setShowEditor] = useState(!!configId);
+  const [currentUserId, setCurrentUserId] = useState<string>();
+  const [currentUserEmail, setCurrentUserEmail] = useState<string>();
+
+  // Get current user
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        setCurrentUserId(user.id);
+        setCurrentUserEmail(user.email);
+      }
+    });
+  }, []);
+
+  // Real-time collaboration
+  const { collaborators, broadcastCursor, isConnected } = useRealtimeCollaboration(
+    configId,
+    currentUserId,
+    currentUserEmail
+  );
+
+  // Handle import
+  const handleImport = (data: any) => {
+    if (data.nodes) setNodes(data.nodes);
+    if (data.edges) setEdges(data.edges);
+    if (data.name) setConfigName(data.name);
+    toast({ title: 'Imported', description: 'Workflow imported successfully' });
+  };
 
   // Fetch agents
   const { data: agents } = useQuery({
@@ -556,10 +586,13 @@ export const MultiAgentCanvas: React.FC = () => {
             <Save className="h-4 w-4" />
             <span className="hidden sm:inline">{saving ? 'Saving...' : 'Save'}</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExport} className="gap-1.5">
-            <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">Export</span>
-          </Button>
+          <WorkflowImportExport
+            configName={configName}
+            nodes={nodes}
+            edges={edges}
+            onImport={handleImport}
+          />
+          {isConnected && <CollaboratorAvatars collaborators={collaborators} />}
           <Button variant="outline" size="sm" onClick={() => setPublishDialogOpen(true)} className="gap-1.5">
             <Store className="h-4 w-4" />
             <span className="hidden sm:inline">Publish</span>
