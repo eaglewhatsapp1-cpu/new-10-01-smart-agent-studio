@@ -124,8 +124,8 @@ serve(async (req) => {
   try {
     // Validate JWT authentication
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      console.error("Missing authorization header");
+    if (!authHeader?.startsWith("Bearer ")) {
+      console.error("Missing or invalid authorization header");
       return new Response(
         JSON.stringify({ error: "Missing authorization" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -139,17 +139,20 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } }
     });
 
-    // Verify user is authenticated
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      console.error("Authentication failed:", authError?.message);
+    // Verify JWT using getClaims for proper validation
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+    
+    if (claimsError || !claimsData?.claims?.sub) {
+      console.error("Authentication failed:", claimsError?.message || "Missing sub claim");
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`Authenticated user: ${user.id}`);
+    const userId = claimsData.claims.sub as string;
+    console.log(`Authenticated user: ${userId}`);
 
     const { messages, agentConfig } = await req.json();
     
@@ -211,7 +214,7 @@ serve(async (req) => {
       if (agentConfig.intro_sentence) systemPrompt += `\nIntroduction: ${agentConfig.intro_sentence}`;
     }
 
-    console.log(`Sending request to Lovable AI Gateway for user: ${user.id}`);
+    console.log(`Sending request to Lovable AI Gateway for user: ${userId}`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
