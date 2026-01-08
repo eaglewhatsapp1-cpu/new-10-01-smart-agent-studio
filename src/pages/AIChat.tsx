@@ -202,12 +202,21 @@ export const AIChat: React.FC = () => {
     // Get agent config if selected
     const agentConfig = selectedAgent ? agents?.find(a => a.id === selectedAgent) : null;
 
+    // Get user's session token for authentication
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      toast.error('Please sign in to use the chat');
+      setIsLoading(false);
+      setIsTyping(false);
+      return;
+    }
+
     try {
       const resp = await fetch(CHAT_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ 
           messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),

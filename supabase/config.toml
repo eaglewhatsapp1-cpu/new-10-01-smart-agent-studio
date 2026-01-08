@@ -1,1 +1,19 @@
 project_id = "inobalhawrtycvupnacq"
+
+[functions.chat]
+verify_jwt = false
+
+[functions.rag-chat]
+verify_jwt = false
+
+[functions.process-document]
+verify_jwt = false
+
+[functions.rag-retrieve]
+verify_jwt = false
+
+[functions.run-workflow]
+verify_jwt = false
+
+[functions.workflow-builder]
+verify_jwt = false
