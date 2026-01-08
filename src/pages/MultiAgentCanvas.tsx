@@ -4,6 +4,7 @@ import {
   ReactFlow,
   Controls,
   Background,
+  MiniMap,
   useNodesState,
   useEdgesState,
   addEdge,
@@ -751,7 +752,24 @@ export const MultiAgentCanvas: React.FC = () => {
                 style: { stroke: 'hsl(var(--primary))', strokeWidth: 2 },
               }}
             >
-              <Controls className="!bg-card !border-border" />
+              <Controls className="!bg-card !border-border !rounded-lg !shadow-lg" />
+              <MiniMap 
+                nodeColor={(node) => {
+                  if (node.type === 'start') return 'hsl(142 76% 36%)';
+                  if (node.type === 'end') return 'hsl(0 84% 60%)';
+                  const data = node.data as unknown as AgentNodeData;
+                  if (data?.model === 'core_analyst') return 'hsl(217 91% 60%)';
+                  if (data?.model === 'core_reviewer') return 'hsl(38 92% 50%)';
+                  if (data?.model === 'core_synthesizer') return 'hsl(280 68% 60%)';
+                  return 'hsl(var(--primary))';
+                }}
+                nodeStrokeColor="hsl(var(--border))"
+                nodeBorderRadius={8}
+                maskColor="hsl(var(--background) / 0.8)"
+                className="!bg-card/90 !backdrop-blur-sm !border !border-border !rounded-xl !shadow-xl"
+                pannable
+                zoomable
+              />
               <Background
                 variant={BackgroundVariant.Dots}
                 gap={20}

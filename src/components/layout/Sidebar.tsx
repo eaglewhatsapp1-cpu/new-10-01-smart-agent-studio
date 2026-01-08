@@ -21,7 +21,7 @@ export const Sidebar: React.FC = () => {
   const navItems = [
   // Overview
   {
-    path: '/',
+    path: '/dashboard',
     label: t.sidebar.dashboard,
     icon: LayoutDashboard
   },
