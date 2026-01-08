@@ -4,9 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { WorkflowPreviewDiagram } from '@/components/workflow/WorkflowPreviewDiagram';
 import { 
   Send, 
   Bot, 
@@ -14,7 +16,9 @@ import {
   Loader2, 
   Sparkles,
   Workflow,
-  ArrowRight
+  ArrowRight,
+  Eye,
+  Settings2
 } from 'lucide-react';
 
 interface Message {
@@ -474,38 +478,97 @@ export const WorkflowBuilder: React.FC = () => {
             </div>
           ))}
 
-          {/* Workflow Ready Card */}
+          {/* Workflow Ready Card with Visual Preview */}
           {generatedWorkflow && (
             <Card className="p-6 border-primary bg-primary/5">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                  <h3 className="font-semibold">Workflow Ready to Deploy!</h3>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <p><strong>Name:</strong> {generatedWorkflow.workflow.name}</p>
-                  <p><strong>Description:</strong> {generatedWorkflow.workflow.description}</p>
-                  <p><strong>Agents:</strong> {generatedWorkflow.workflow.agents.length}</p>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {generatedWorkflow.workflow.agents.map((agent, index) => (
-                      <span 
-                        key={index}
-                        className="px-2 py-1 bg-secondary rounded text-xs"
-                      >
-                        {agent.display_name}
-                      </span>
-                    ))}
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                    <h3 className="font-semibold">Workflow Ready to Deploy!</h3>
                   </div>
                 </div>
+
+                {/* Tabs for Preview and Details */}
+                <Tabs defaultValue="preview" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="preview" className="gap-2">
+                      <Eye className="h-4 w-4" />
+                      Visual Preview
+                    </TabsTrigger>
+                    <TabsTrigger value="details" className="gap-2">
+                      <Settings2 className="h-4 w-4" />
+                      Agent Details
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="preview" className="mt-4">
+                    <WorkflowPreviewDiagram
+                      agents={generatedWorkflow.workflow.agents}
+                      connections={generatedWorkflow.workflow.connections}
+                      workflowName={generatedWorkflow.workflow.name}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="details" className="mt-4">
+                    <div className="space-y-3">
+                      <div className="grid gap-2 text-sm">
+                        <p><strong>Name:</strong> {generatedWorkflow.workflow.name}</p>
+                        <p><strong>Description:</strong> {generatedWorkflow.workflow.description}</p>
+                      </div>
+                      
+                      {/* Agent Details */}
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Agents ({generatedWorkflow.workflow.agents.length}):</p>
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                          {generatedWorkflow.workflow.agents.map((agent, index) => (
+                            <div 
+                              key={index}
+                              className="p-3 rounded-lg bg-background border border-border"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-medium text-sm">{agent.display_name}</span>
+                                <span className="text-xs px-2 py-0.5 rounded bg-muted">
+                                  {agent.core_model.replace('core_', '')}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground line-clamp-2">
+                                {agent.role_description}
+                              </p>
+                              {agent.rag_policy && (
+                                <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                                  <span>KB: {Math.round((agent.rag_policy.knowledge_base_ratio || 0) * 100)}%</span>
+                                  <span>•</span>
+                                  <span>Creativity: {agent.rag_policy.creativity_level || 'low'}</span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Workflow Settings */}
+                      {generatedWorkflow.workflow.workflow_settings && (
+                        <div className="p-3 rounded-lg bg-muted/50 text-xs space-y-1">
+                          <p><strong>Execution:</strong> {generatedWorkflow.workflow.workflow_settings.execution_mode}</p>
+                          <p><strong>Error Handling:</strong> {generatedWorkflow.workflow.workflow_settings.error_handling}</p>
+                          <p><strong>Timeout:</strong> {generatedWorkflow.workflow.workflow_settings.timeout_seconds}s</p>
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+                </Tabs>
+
                 <Button 
                   onClick={deployWorkflow} 
                   disabled={isDeploying}
                   className="w-full"
+                  size="lg"
                 >
                   {isDeploying ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Deploying...
+                      Deploying Workflow...
                     </>
                   ) : (
                     <>
