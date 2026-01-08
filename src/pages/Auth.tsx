@@ -59,7 +59,7 @@ export const Auth: React.FC = () => {
         variant: 'destructive',
       });
     } else {
-      navigate('/');
+      navigate('/dashboard');
     }
   };
 

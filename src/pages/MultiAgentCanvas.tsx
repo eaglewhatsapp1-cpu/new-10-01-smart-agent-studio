@@ -709,6 +709,8 @@ export const MultiAgentCanvas: React.FC = () => {
         agents={chatAgents}
         isOpen={chatOpen}
         onClose={() => setChatOpen(false)}
+        workflowId={configId}
+        workspaceId={currentWorkspace?.id}
       />
 
       {/* Publish to Marketplace Dialog */}

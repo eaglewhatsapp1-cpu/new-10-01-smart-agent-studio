@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Plus, 
   Database, 
@@ -16,12 +18,17 @@ import {
   FileText,
   File,
   Clock,
-  Info
+  Info,
+  Search,
+  Filter,
+  Eye,
+  X
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { CreateFolderDialog } from '@/components/dialogs/CreateFolderDialog';
 import { UploadDocumentDialog } from '@/components/dialogs/UploadDocumentDialog';
+import { DocumentPreviewDialog } from '@/components/knowledge/DocumentPreviewDialog';
 import { useAuth } from '@/hooks/useAuth';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { format } from 'date-fns';
@@ -32,6 +39,7 @@ interface FolderNode {
   parent_id: string | null;
   created_by: string | null;
   created_at: string | null;
+  folder_type: string | null;
   children: FolderNode[];
   documents: DocumentInfo[];
 }
@@ -41,6 +49,7 @@ interface DocumentInfo {
   source_file: string;
   created_at: string | null;
   chunk_count: number;
+  folder_id: string;
 }
 
 const buildFolderTree = (folders: any[], documents: any[]): FolderNode[] => {
@@ -65,7 +74,8 @@ const buildFolderTree = (folders: any[], documents: any[]): FolderNode[] => {
           id: doc.id,
           source_file: doc.source_file,
           created_at: doc.created_at,
-          chunk_count: 1
+          chunk_count: 1,
+          folder_id: doc.folder_id
         });
       }
     }
@@ -89,14 +99,29 @@ interface FolderItemProps {
   level: number;
   onDelete: (id: string) => void;
   currentUserId: string | undefined;
+  searchQuery: string;
+  onPreviewDocument: (doc: DocumentInfo) => void;
 }
 
 const FolderItem = React.forwardRef<HTMLDivElement, FolderItemProps>(
-  ({ folder, level, onDelete, currentUserId }, ref) => {
+  ({ folder, level, onDelete, currentUserId, searchQuery, onPreviewDocument }, ref) => {
     const [expanded, setExpanded] = useState(true);
+    
+    // Filter documents by search query
+    const filteredDocuments = folder.documents.filter(doc =>
+      doc.source_file.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    
     const hasChildren = folder.children.length > 0;
-    const hasDocuments = folder.documents.length > 0;
+    const hasDocuments = filteredDocuments.length > 0;
     const isOwner = currentUserId && folder.created_by === currentUserId;
+
+    // If searching and no matches in this branch, hide the folder
+    if (searchQuery && !hasDocuments && !folder.children.some(child => 
+      child.documents.some(doc => doc.source_file.toLowerCase().includes(searchQuery.toLowerCase()))
+    )) {
+      return null;
+    }
 
     return (
       <div ref={ref}>
@@ -109,7 +134,7 @@ const FolderItem = React.forwardRef<HTMLDivElement, FolderItemProps>(
             className="p-0.5 hover:bg-muted rounded"
             disabled={!hasChildren && !hasDocuments}
           >
-            {(hasChildren || hasDocuments) ? (
+            {(hasChildren || folder.documents.length > 0) ? (
               expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />
             ) : (
               <span className="w-4" />
@@ -118,7 +143,13 @@ const FolderItem = React.forwardRef<HTMLDivElement, FolderItemProps>(
           <Folder className="h-4 w-4 text-primary" />
           <span className="flex-1 text-sm font-medium">{folder.name}</span>
           
-          {hasDocuments && (
+          {folder.folder_type && (
+            <Badge variant="outline" className="text-xs">
+              {folder.folder_type}
+            </Badge>
+          )}
+          
+          {folder.documents.length > 0 && (
             <Badge variant="secondary" className="text-xs">
               {folder.documents.length} file{folder.documents.length !== 1 ? 's' : ''}
             </Badge>
@@ -140,13 +171,26 @@ const FolderItem = React.forwardRef<HTMLDivElement, FolderItemProps>(
         {/* Show documents when expanded */}
         {expanded && hasDocuments && (
           <div className="ml-4" style={{ paddingInlineStart: `${level * 20 + 24}px` }}>
-            {folder.documents.map((doc) => (
+            {filteredDocuments.map((doc) => (
               <div
                 key={doc.id}
-                className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-accent/50 text-sm"
+                className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-accent/50 text-sm group/doc"
               >
                 <FileText className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="flex-1 text-muted-foreground truncate">{doc.source_file}</span>
+                
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 opacity-0 group-hover/doc:opacity-100"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPreviewDocument(doc);
+                  }}
+                >
+                  <Eye className="h-3 w-3" />
+                </Button>
+                
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -188,6 +232,8 @@ const FolderItem = React.forwardRef<HTMLDivElement, FolderItemProps>(
                 level={level + 1} 
                 onDelete={onDelete}
                 currentUserId={currentUserId}
+                searchQuery={searchQuery}
+                onPreviewDocument={onPreviewDocument}
               />
             ))}
           </div>
@@ -206,6 +252,9 @@ export const KnowledgeBase: React.FC = () => {
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [folderTypeFilter, setFolderTypeFilter] = useState<string>('all');
+  const [previewDoc, setPreviewDoc] = useState<DocumentInfo | null>(null);
 
   const { data: folders, isLoading: foldersLoading } = useQuery({
     queryKey: ['folders'],
@@ -249,7 +298,31 @@ export const KnowledgeBase: React.FC = () => {
   };
 
   const isLoading = foldersLoading || documentsLoading;
-  const folderTree = folders && documents ? buildFolderTree(folders, documents) : [];
+  
+  // Apply folder type filter
+  const filteredFolders = useMemo(() => {
+    if (!folders) return [];
+    if (folderTypeFilter === 'all') return folders;
+    return folders.filter(f => f.folder_type === folderTypeFilter);
+  }, [folders, folderTypeFilter]);
+  
+  const folderTree = filteredFolders && documents ? buildFolderTree(filteredFolders, documents) : [];
+  
+  // Get unique folder types for filter
+  const folderTypes = useMemo(() => {
+    if (!folders) return [];
+    const types = new Set(folders.map(f => f.folder_type).filter(Boolean));
+    return Array.from(types) as string[];
+  }, [folders]);
+
+  // Count total documents matching search
+  const totalMatchingDocs = useMemo(() => {
+    if (!documents) return 0;
+    if (!searchQuery) return documents.length;
+    return documents.filter(d => 
+      d.source_file.toLowerCase().includes(searchQuery.toLowerCase())
+    ).length;
+  }, [documents, searchQuery]);
 
   return (
     <div className="space-y-6">
@@ -279,6 +352,50 @@ export const KnowledgeBase: React.FC = () => {
         </div>
       </div>
 
+      {/* Search and Filter Bar */}
+      <div className="flex gap-3 items-center">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search documents..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 pr-9"
+          />
+          {searchQuery && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6"
+              onClick={() => setSearchQuery('')}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
+        
+        <Select value={folderTypeFilter} onValueChange={setFolderTypeFilter}>
+          <SelectTrigger className="w-[180px]">
+            <Filter className="h-4 w-4 mr-2" />
+            <SelectValue placeholder="Filter by type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            {folderTypes.map(type => (
+              <SelectItem key={type} value={type}>
+                {type}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        
+        {(searchQuery || folderTypeFilter !== 'all') && (
+          <Badge variant="secondary" className="text-xs">
+            {totalMatchingDocs} result{totalMatchingDocs !== 1 ? 's' : ''}
+          </Badge>
+        )}
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -300,12 +417,14 @@ export const KnowledgeBase: React.FC = () => {
                   level={0} 
                   onDelete={handleDelete}
                   currentUserId={user?.id}
+                  searchQuery={searchQuery}
+                  onPreviewDocument={(doc) => setPreviewDoc(doc)}
                 />
               ))}
             </div>
           ) : (
             <p className="text-muted-foreground text-center py-8">
-              {t.knowledgeBase.noFolders}
+              {searchQuery ? 'No documents match your search' : t.knowledgeBase.noFolders}
             </p>
           )}
         </CardContent>
@@ -326,6 +445,13 @@ export const KnowledgeBase: React.FC = () => {
           queryClient.invalidateQueries({ queryKey: ['folders'] });
           queryClient.invalidateQueries({ queryKey: ['knowledge_chunks'] });
         }}
+      />
+
+      <DocumentPreviewDialog
+        open={!!previewDoc}
+        onOpenChange={(open) => !open && setPreviewDoc(null)}
+        sourceFile={previewDoc?.source_file || ''}
+        folderId={previewDoc?.folder_id}
       />
     </div>
   );

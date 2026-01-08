@@ -2,12 +2,15 @@ import React, { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Heart, Code2, Shield, FileText, HelpCircle } from 'lucide-react';
+import { useOnboarding, OnboardingOverlay } from '@/components/onboarding/OnboardingTooltip';
 
 interface MainLayoutProps {
   children: ReactNode;
 }
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
+  const onboarding = useOnboarding();
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Sidebar />
@@ -38,6 +41,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           </div>
         </div>
       </footer>
+
+      {/* Onboarding Overlay */}
+      <OnboardingOverlay {...onboarding} />
     </div>
   );
 };

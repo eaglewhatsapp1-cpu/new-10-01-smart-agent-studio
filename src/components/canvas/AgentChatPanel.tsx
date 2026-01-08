@@ -5,6 +5,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Send, Bot, User, Loader2, X, Maximize2, Minimize2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface Message {
   id: string;
@@ -25,18 +27,23 @@ interface AgentChatPanelProps {
   agents: AgentNode[];
   isOpen: boolean;
   onClose: () => void;
+  workflowId?: string;
+  workspaceId?: string;
 }
 
 export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   agents,
   isOpen,
   onClose,
+  workflowId,
+  workspaceId,
 }) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -55,25 +62,96 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const currentInput = input.trim();
     setInput('');
     setIsLoading(true);
 
-    // Simulate multi-agent response chain
-    for (let i = 0; i < agents.length; i++) {
-      const agent = agents[i];
-      await new Promise((resolve) => setTimeout(resolve, 1000 + Math.random() * 500));
-      
-      const agentResponse: Message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: `[${agent.label}] Processing with ${agent.model}...\n\nThis is a simulated response from agent ${i + 1} of ${agents.length}. Connect to your AI backend to get real responses.\n\n${i < agents.length - 1 ? 'Passing to next agent...' : 'Workflow complete.'}`,
-        agentName: agent.label,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, agentResponse]);
-    }
+    try {
+      // Get session for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Not authenticated');
+      }
 
-    setIsLoading(false);
+      // Call the run-workflow edge function
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/run-workflow`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            workflowId,
+            workspaceId,
+            triggerType: 'chat',
+            inputData: { prompt: currentInput },
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Request failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      // Process response from each agent
+      if (result.outputData) {
+        for (const agent of agents) {
+          const agentOutput = result.outputData[agent.agentId];
+          if (agentOutput) {
+            const agentResponse: Message = {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: agentOutput.response || 'No response generated',
+              agentName: agentOutput.agent || agent.label,
+              timestamp: new Date(),
+            };
+            setMessages((prev) => [...prev, agentResponse]);
+          }
+        }
+      }
+
+      // If no output, show logs summary
+      if (!result.outputData || Object.keys(result.outputData).length === 0) {
+        const logs = result.executionLogs || [];
+        const summary = logs.map((log: any) => `[${log.type}] ${log.agent || ''}: ${log.message}`).join('\n');
+        
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: summary || 'Workflow completed but no output was generated.',
+            agentName: 'System',
+            timestamp: new Date(),
+          },
+        ]);
+      }
+    } catch (error) {
+      console.error('Workflow execution error:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to execute workflow',
+        variant: 'destructive',
+      });
+      
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `Error: ${error instanceof Error ? error.message : 'Failed to execute workflow'}`,
+          agentName: 'System',
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -138,6 +216,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               <div className="text-center">
                 <Bot className="h-10 w-10 mx-auto mb-3 opacity-50" />
                 <p className="text-sm">Start testing your workflow</p>
+                <p className="text-xs mt-1 opacity-70">Your message will be processed by all agents</p>
               </div>
             </div>
           ) : (
@@ -184,7 +263,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                     <Loader2 className="h-3.5 w-3.5 text-primary animate-spin" />
                   </div>
                   <div className="bg-muted rounded-lg p-2.5">
-                    <p className="text-sm text-muted-foreground">Processing...</p>
+                    <p className="text-sm text-muted-foreground">Processing with AI agents...</p>
                   </div>
                 </div>
               )}
