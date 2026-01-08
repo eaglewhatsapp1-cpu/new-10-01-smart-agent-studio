@@ -61,6 +61,186 @@ export type Database = {
           },
         ]
       }
+      agent_memory: {
+        Row: {
+          access_count: number | null
+          agent_id: string | null
+          confidence: number | null
+          created_at: string | null
+          id: string
+          importance: number | null
+          last_accessed: string | null
+          memory_key: string
+          memory_type: string
+          memory_value: Json
+          source_conversation_id: string | null
+          updated_at: string | null
+          user_id: string
+          workspace_id: string | null
+        }
+        Insert: {
+          access_count?: number | null
+          agent_id?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          id?: string
+          importance?: number | null
+          last_accessed?: string | null
+          memory_key: string
+          memory_type: string
+          memory_value: Json
+          source_conversation_id?: string | null
+          updated_at?: string | null
+          user_id: string
+          workspace_id?: string | null
+        }
+        Update: {
+          access_count?: number | null
+          agent_id?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          id?: string
+          importance?: number | null
+          last_accessed?: string | null
+          memory_key?: string
+          memory_type?: string
+          memory_value?: Json
+          source_conversation_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_memory_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "ai_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memory_source_conversation_id_fkey"
+            columns: ["source_conversation_id"]
+            isOneToOne: false
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_memory_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_reasoning_logs: {
+        Row: {
+          confidence: number | null
+          content: string
+          conversation_id: string | null
+          created_at: string | null
+          id: string
+          latency_ms: number | null
+          message_id: string | null
+          step_number: number
+          step_type: string
+          tool_input: Json | null
+          tool_name: string | null
+          tool_output: Json | null
+        }
+        Insert: {
+          confidence?: number | null
+          content: string
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          latency_ms?: number | null
+          message_id?: string | null
+          step_number: number
+          step_type: string
+          tool_input?: Json | null
+          tool_name?: string | null
+          tool_output?: Json | null
+        }
+        Update: {
+          confidence?: number | null
+          content?: string
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          latency_ms?: number | null
+          message_id?: string | null
+          step_number?: number
+          step_type?: string
+          tool_input?: Json | null
+          tool_name?: string | null
+          tool_output?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_reasoning_logs_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_reasoning_logs_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_tools: {
+        Row: {
+          config: Json | null
+          created_at: string | null
+          description: string | null
+          display_name: string
+          id: string
+          is_active: boolean | null
+          name: string
+          tool_type: string
+          updated_at: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          config?: Json | null
+          created_at?: string | null
+          description?: string | null
+          display_name: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+          tool_type: string
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          config?: Json | null
+          created_at?: string | null
+          description?: string | null
+          display_name?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          tool_type?: string
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_tools_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_workflows: {
         Row: {
           canvas_data: Json | null
@@ -433,6 +613,82 @@ export type Database = {
           },
         ]
       }
+      knowledge_summaries: {
+        Row: {
+          child_summaries: string[] | null
+          content: string
+          created_at: string | null
+          embedding: string | null
+          entity_mentions: Json | null
+          folder_id: string | null
+          id: string
+          key_concepts: string[] | null
+          level: number
+          parent_summary_id: string | null
+          source_chunks: string[] | null
+          title: string | null
+          token_count: number | null
+          updated_at: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          child_summaries?: string[] | null
+          content: string
+          created_at?: string | null
+          embedding?: string | null
+          entity_mentions?: Json | null
+          folder_id?: string | null
+          id?: string
+          key_concepts?: string[] | null
+          level: number
+          parent_summary_id?: string | null
+          source_chunks?: string[] | null
+          title?: string | null
+          token_count?: number | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          child_summaries?: string[] | null
+          content?: string
+          created_at?: string | null
+          embedding?: string | null
+          entity_mentions?: Json | null
+          folder_id?: string | null
+          id?: string
+          key_concepts?: string[] | null
+          level?: number
+          parent_summary_id?: string | null
+          source_chunks?: string[] | null
+          title?: string | null
+          token_count?: number | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_summaries_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "knowledge_summaries_parent_summary_id_fkey"
+            columns: ["parent_summary_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_summaries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "knowledge_summaries_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       marketplace_imports: {
         Row: {
           created_at: string
@@ -647,6 +903,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      query_complexity_cache: {
+        Row: {
+          analysis_details: Json | null
+          complexity: string
+          created_at: string | null
+          id: string
+          original_query: string
+          query_hash: string
+          recommended_strategy: string
+        }
+        Insert: {
+          analysis_details?: Json | null
+          complexity: string
+          created_at?: string | null
+          id?: string
+          original_query: string
+          query_hash: string
+          recommended_strategy: string
+        }
+        Update: {
+          analysis_details?: Json | null
+          complexity?: string
+          created_at?: string | null
+          id?: string
+          original_query?: string
+          query_hash?: string
+          recommended_strategy?: string
+        }
+        Relationships: []
       }
       rag_chunk_corrections: {
         Row: {
@@ -1086,6 +1372,65 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rag_strategy_metrics: {
+        Row: {
+          avg_confidence: number | null
+          avg_latency_ms: number | null
+          created_at: string | null
+          failure_count: number | null
+          id: string
+          last_used: string | null
+          negative_feedback: number | null
+          positive_feedback: number | null
+          query_complexity: string | null
+          strategy_name: string
+          success_count: number | null
+          total_queries: number | null
+          updated_at: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          avg_confidence?: number | null
+          avg_latency_ms?: number | null
+          created_at?: string | null
+          failure_count?: number | null
+          id?: string
+          last_used?: string | null
+          negative_feedback?: number | null
+          positive_feedback?: number | null
+          query_complexity?: string | null
+          strategy_name: string
+          success_count?: number | null
+          total_queries?: number | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          avg_confidence?: number | null
+          avg_latency_ms?: number | null
+          created_at?: string | null
+          failure_count?: number | null
+          id?: string
+          last_used?: string | null
+          negative_feedback?: number | null
+          positive_feedback?: number | null
+          query_complexity?: string | null
+          strategy_name?: string
+          success_count?: number | null
+          total_queries?: number | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rag_strategy_metrics_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
         ]
