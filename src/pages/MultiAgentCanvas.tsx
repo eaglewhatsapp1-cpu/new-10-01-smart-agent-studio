@@ -51,11 +51,17 @@ interface AgentNodeData {
   };
 }
 
-// Custom Agent Node Component
+// Model color configurations
+const modelColors: Record<string, { gradient: string; glow: string; text: string }> = {
+  core_analyst: { gradient: 'from-blue-500 to-cyan-500', glow: 'shadow-blue-500/30', text: 'text-blue-500' },
+  core_reviewer: { gradient: 'from-amber-500 to-orange-500', glow: 'shadow-amber-500/30', text: 'text-amber-500' },
+  core_synthesizer: { gradient: 'from-purple-500 to-pink-500', glow: 'shadow-purple-500/30', text: 'text-purple-500' },
+};
+
+// Custom Agent Node Component with Modern Styling
 const AgentNode: React.FC<NodeProps> = ({ data, selected }) => {
   const nodeData = data as unknown as AgentNodeData;
   
-  // Ensure we have proper arrays for counting
   const fromKB = Array.isArray(nodeData.inputs?.fromKnowledgeBase) 
     ? nodeData.inputs.fromKnowledgeBase 
     : [];
@@ -69,85 +75,117 @@ const AgentNode: React.FC<NodeProps> = ({ data, selected }) => {
   const inputCount = fromKB.length + fromAgents.length;
   const outputCount = (nodeData.outputs?.toKnowledgeBase ? 1 : 0) + toAgents.length;
 
+  const colors = modelColors[nodeData.model] || modelColors.core_analyst;
+
   return (
     <div
-      className={`bg-card border-2 rounded-lg p-4 min-w-[220px] shadow-lg transition-all cursor-pointer ${
-        selected ? 'border-primary shadow-primary/20' : 'border-border hover:border-primary/50'
+      className={`relative bg-card/90 backdrop-blur-md border-2 rounded-2xl p-5 min-w-[240px] shadow-xl transition-all duration-300 cursor-pointer group ${
+        selected 
+          ? `border-primary ${colors.glow} shadow-2xl scale-105` 
+          : 'border-border/50 hover:border-primary/50 hover:shadow-lg hover:-translate-y-1'
       }`}
     >
+      {/* Glowing background effect */}
+      <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${colors.gradient} opacity-5 group-hover:opacity-10 transition-opacity`} />
+      
       <Handle
         type="target"
         position={Position.Left}
-        className="!w-3 !h-3 !bg-primary !border-2 !border-background"
+        className="!w-4 !h-4 !bg-gradient-to-r !from-primary !to-primary/80 !border-2 !border-background !rounded-full !shadow-lg"
       />
-      <div className="flex items-center gap-2 mb-2">
-        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-          <Bot className="h-4 w-4 text-primary" />
+      
+      {/* Header with Icon */}
+      <div className="flex items-center gap-3 mb-3 relative">
+        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${colors.gradient} flex items-center justify-center shadow-lg ring-4 ring-background`}>
+          <Bot className="h-6 w-6 text-white" />
         </div>
         <div className="flex-1">
-          <p className="font-medium text-sm">{nodeData.label}</p>
-          <Badge variant="outline" className="text-xs">
-            {nodeData.model}
+          <p className="font-semibold text-base">{nodeData.label}</p>
+          <Badge className={`text-xs bg-gradient-to-r ${colors.gradient} text-white border-0 shadow-sm`}>
+            {nodeData.model?.replace('core_', '')}
           </Badge>
         </div>
       </div>
+      
+      {/* Role Description */}
       {nodeData.role && (
-        <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{nodeData.role}</p>
+        <p className="text-xs text-muted-foreground line-clamp-2 mb-3 pl-1 border-l-2 border-primary/30">{nodeData.role}</p>
       )}
+      
+      {/* I/O Stats */}
       <div className="flex gap-2 text-xs">
-        <Badge variant="secondary" className="text-xs">
-          {inputCount} input{inputCount !== 1 ? 's' : ''}
-        </Badge>
-        <Badge variant="secondary" className="text-xs">
-          {outputCount} output{outputCount !== 1 ? 's' : ''}
-        </Badge>
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-muted/80">
+          <div className="w-2 h-2 rounded-full bg-green-500" />
+          <span className="font-medium">{inputCount} in</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-muted/80">
+          <div className="w-2 h-2 rounded-full bg-blue-500" />
+          <span className="font-medium">{outputCount} out</span>
+        </div>
       </div>
+      
       <Handle
         type="source"
         position={Position.Right}
-        className="!w-3 !h-3 !bg-primary !border-2 !border-background"
+        className="!w-4 !h-4 !bg-gradient-to-r !from-primary/80 !to-primary !border-2 !border-background !rounded-full !shadow-lg"
       />
     </div>
   );
 };
 
-// Start Node
+// Modern Start Node
 const StartNode: React.FC<NodeProps> = ({ selected }) => {
   return (
     <div
-      className={`bg-green-500/10 border-2 border-green-500 rounded-full p-4 shadow-lg ${
-        selected ? 'shadow-green-500/30' : ''
+      className={`relative bg-gradient-to-br from-green-500/20 to-emerald-500/10 backdrop-blur-sm border-2 border-green-500/50 rounded-2xl p-5 shadow-xl transition-all duration-300 ${
+        selected ? 'shadow-green-500/40 scale-105 border-green-500' : 'hover:shadow-green-500/20 hover:-translate-y-1'
       }`}
     >
-      <div className="flex items-center gap-2">
-        <Zap className="h-5 w-5 text-green-500" />
-        <span className="font-medium text-green-500">Start</span>
+      {/* Glow effect */}
+      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-500 opacity-10 blur-xl" />
+      
+      <div className="relative flex items-center gap-3">
+        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center shadow-lg shadow-green-500/30 ring-4 ring-green-500/20">
+          <Zap className="h-6 w-6 text-white" />
+        </div>
+        <div>
+          <span className="font-bold text-green-500 text-lg">Start</span>
+          <p className="text-xs text-muted-foreground">Workflow Entry</p>
+        </div>
       </div>
       <Handle
         type="source"
         position={Position.Right}
-        className="!w-3 !h-3 !bg-green-500 !border-2 !border-background"
+        className="!w-4 !h-4 !bg-gradient-to-r !from-green-500 !to-emerald-500 !border-2 !border-background !rounded-full !shadow-lg"
       />
     </div>
   );
 };
 
-// End Node
+// Modern End Node
 const EndNode: React.FC<NodeProps> = ({ selected }) => {
   return (
     <div
-      className={`bg-red-500/10 border-2 border-red-500 rounded-full p-4 shadow-lg ${
-        selected ? 'shadow-red-500/30' : ''
+      className={`relative bg-gradient-to-br from-red-500/20 to-rose-500/10 backdrop-blur-sm border-2 border-red-500/50 rounded-2xl p-5 shadow-xl transition-all duration-300 ${
+        selected ? 'shadow-red-500/40 scale-105 border-red-500' : 'hover:shadow-red-500/20 hover:-translate-y-1'
       }`}
     >
+      {/* Glow effect */}
+      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-red-500 to-rose-500 opacity-10 blur-xl" />
+      
       <Handle
         type="target"
         position={Position.Left}
-        className="!w-3 !h-3 !bg-red-500 !border-2 !border-background"
+        className="!w-4 !h-4 !bg-gradient-to-r !from-red-500 !to-rose-500 !border-2 !border-background !rounded-full !shadow-lg"
       />
-      <div className="flex items-center gap-2">
-        <div className="w-3 h-3 rounded-full bg-red-500" />
-        <span className="font-medium text-red-500">End</span>
+      <div className="relative flex items-center gap-3">
+        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center shadow-lg shadow-red-500/30 ring-4 ring-red-500/20">
+          <div className="w-4 h-4 rounded-sm bg-white" />
+        </div>
+        <div>
+          <span className="font-bold text-red-500 text-lg">End</span>
+          <p className="text-xs text-muted-foreground">Workflow Exit</p>
+        </div>
       </div>
     </div>
   );

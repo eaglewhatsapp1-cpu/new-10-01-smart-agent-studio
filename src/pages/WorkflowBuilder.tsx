@@ -507,7 +507,26 @@ export const WorkflowBuilder: React.FC = () => {
                       agents={generatedWorkflow.workflow.agents}
                       connections={generatedWorkflow.workflow.connections}
                       workflowName={generatedWorkflow.workflow.name}
+                      editable={true}
+                      onReorder={(newAgents, newConnections) => {
+                        setGeneratedWorkflow({
+                          ...generatedWorkflow,
+                          workflow: {
+                            ...generatedWorkflow.workflow,
+                            agents: newAgents as GeneratedAgent[],
+                            connections: newConnections.map(c => ({
+                              from: c.from,
+                              to: c.to,
+                              condition: (c.condition || 'always') as 'always' | 'on_success' | 'on_specific_output',
+                              data_mapping: c.data_mapping,
+                            })),
+                          },
+                        });
+                      }}
                     />
+                    <p className="text-xs text-muted-foreground mt-3 text-center">
+                      💡 Drag agents to reorder the workflow sequence
+                    </p>
                   </TabsContent>
 
                   <TabsContent value="details" className="mt-4">
