@@ -913,6 +913,7 @@ export type Database = {
           original_query: string
           query_hash: string
           recommended_strategy: string
+          user_id: string | null
         }
         Insert: {
           analysis_details?: Json | null
@@ -922,6 +923,7 @@ export type Database = {
           original_query: string
           query_hash: string
           recommended_strategy: string
+          user_id?: string | null
         }
         Update: {
           analysis_details?: Json | null
@@ -931,6 +933,7 @@ export type Database = {
           original_query?: string
           query_hash?: string
           recommended_strategy?: string
+          user_id?: string | null
         }
         Relationships: []
       }

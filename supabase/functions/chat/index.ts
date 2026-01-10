@@ -172,6 +172,30 @@ serve(async (req) => {
       );
     }
 
+    // Validate each message content length and format
+    for (const msg of messages) {
+      if (!msg.content || typeof msg.content !== 'string') {
+        return new Response(
+          JSON.stringify({ error: "Invalid message format: content must be a string" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
+      if (msg.content.length > 50000) {
+        return new Response(
+          JSON.stringify({ error: "Message too long (max 50,000 characters per message)" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
+      if (!msg.role || !['user', 'assistant', 'system'].includes(msg.role)) {
+        return new Response(
+          JSON.stringify({ error: "Invalid message role: must be 'user', 'assistant', or 'system'" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // If agentConfig includes an agent_id, verify user has access
     if (agentConfig?.agent_id) {
       const { data: agent, error: agentError } = await supabase

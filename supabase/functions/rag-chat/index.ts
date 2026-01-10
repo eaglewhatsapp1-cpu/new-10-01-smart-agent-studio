@@ -44,7 +44,8 @@ type QueryComplexity = 'simple' | 'moderate' | 'complex' | 'conversational';
 async function analyzeQueryComplexity(
   query: string,
   conversationHistory: any[],
-  supabase: any
+  supabase: any,
+  userId: string | null = null
 ): Promise<{ complexity: QueryComplexity; strategy: string; reasoning: string }> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   
@@ -127,13 +128,14 @@ Last 2 messages context: ${conversationHistory.slice(-2).map(m => m.content?.sub
         try {
           const parsed = JSON.parse(jsonMatch[0]);
           
-          // Cache the result
+          // Cache the result with user_id for RLS compliance
           await supabase.from('query_complexity_cache').insert({
             query_hash: hashHex,
             original_query: query.substring(0, 500),
             complexity: parsed.complexity,
             recommended_strategy: parsed.strategy,
-            analysis_details: parsed.indicators || {}
+            analysis_details: parsed.indicators || {},
+            user_id: userId
           }).catch(() => {}); // Ignore cache errors
 
           return {
@@ -941,6 +943,30 @@ serve(async (req) => {
       );
     }
 
+    // Validate each message content length and format
+    for (const msg of messages) {
+      if (!msg.content || typeof msg.content !== 'string') {
+        return new Response(
+          JSON.stringify({ error: "Invalid message format: content must be a string" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
+      if (msg.content.length > 50000) {
+        return new Response(
+          JSON.stringify({ error: "Message too long (max 50,000 characters per message)" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
+      if (!msg.role || !['user', 'assistant', 'system'].includes(msg.role)) {
+        return new Response(
+          JSON.stringify({ error: "Invalid message role: must be 'user', 'assistant', or 'system'" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -953,7 +979,7 @@ serve(async (req) => {
     let strategy = 'standard_rag';
     
     if (enable_adaptive_strategy) {
-      const analysis = await analyzeQueryComplexity(userMessage, messages.slice(0, -1), supabase);
+      const analysis = await analyzeQueryComplexity(userMessage, messages.slice(0, -1), supabase, user_id);
       complexity = analysis.complexity;
       strategy = analysis.strategy;
       console.log(`Adaptive Strategy: ${complexity} -> ${strategy}`);
