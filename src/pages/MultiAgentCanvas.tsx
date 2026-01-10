@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
@@ -25,7 +25,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Bot, Play, Plus, Trash2, Zap, Save, Settings2, ArrowLeft, MessageCircle, Store, Clock } from 'lucide-react';
+import { Bot, Play, Plus, Trash2, Zap, Save, Settings2, ArrowLeft, MessageCircle, Store, Clock, Undo2, Redo2 } from 'lucide-react';
+import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { useToast } from '@/hooks/use-toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { AgentNodeConfig } from '@/components/canvas/AgentNodeConfig';
@@ -231,6 +232,36 @@ export const MultiAgentCanvas: React.FC = () => {
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [showEditor, setShowEditor] = useState(!!configId);
+
+  // Undo/Redo functionality
+  const { undo, redo, canUndo, canRedo, takeSnapshot, isUndoRedoAction } = useUndoRedo(
+    nodes,
+    edges,
+    setNodes,
+    setEdges
+  );
+
+  // Track previous nodes/edges for change detection
+  const prevNodesRef = useRef<string>('');
+  const prevEdgesRef = useRef<string>('');
+
+  // Detect meaningful changes and take snapshots
+  useEffect(() => {
+    if (isUndoRedoAction) return;
+
+    const nodesJson = JSON.stringify(nodes.map(n => ({ id: n.id, position: n.position, data: n.data })));
+    const edgesJson = JSON.stringify(edges);
+
+    const nodesChanged = nodesJson !== prevNodesRef.current;
+    const edgesChanged = edgesJson !== prevEdgesRef.current;
+
+    if ((nodesChanged || edgesChanged) && prevNodesRef.current !== '') {
+      takeSnapshot();
+    }
+
+    prevNodesRef.current = nodesJson;
+    prevEdgesRef.current = edgesJson;
+  }, [nodes, edges, takeSnapshot, isUndoRedoAction]);
   const [currentUserId, setCurrentUserId] = useState<string>();
   const [currentUserEmail, setCurrentUserEmail] = useState<string>();
 
@@ -617,6 +648,12 @@ export const MultiAgentCanvas: React.FC = () => {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={undo} disabled={!canUndo} className="gap-1.5" title="Undo (Ctrl+Z)">
+            <Undo2 className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={redo} disabled={!canRedo} className="gap-1.5" title="Redo (Ctrl+Y)">
+            <Redo2 className="h-4 w-4" />
+          </Button>
           <Button variant="outline" size="sm" onClick={deleteSelectedNodes} className="gap-1.5">
             <Trash2 className="h-4 w-4" />
             <span className="hidden sm:inline">Delete</span>
