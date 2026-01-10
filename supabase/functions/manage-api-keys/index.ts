@@ -8,22 +8,29 @@ const corsHeaders = {
 
 // Simple encryption using Web Crypto API with AES-GCM
 async function getEncryptionKey(): Promise<CryptoKey> {
-  // Use a combination of project-specific values for encryption
-  // In production, this should be a proper secret stored in Supabase Vault
-  const projectId = Deno.env.get("SUPABASE_URL")?.split("//")[1]?.split(".")[0] || "default";
+  // Use a proper secret for encryption - stored in Supabase Secrets
+  const encryptionSecret = Deno.env.get("API_KEY_ENCRYPTION_SECRET");
+  
+  if (!encryptionSecret || encryptionSecret.length < 32) {
+    throw new Error("API_KEY_ENCRYPTION_SECRET not configured or too short (minimum 32 characters required)");
+  }
+  
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
-    encoder.encode(projectId.padEnd(32, "0").slice(0, 32)),
+    encoder.encode(encryptionSecret.slice(0, 32)),
     { name: "PBKDF2" },
     false,
     ["deriveKey"]
   );
   
+  // Use a project-specific salt from secrets, or derive from the encryption secret
+  const saltSecret = Deno.env.get("API_KEY_SALT") || encryptionSecret.slice(32, 64) || "secure-salt-value";
+  
   return crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt: encoder.encode("lovable-api-keys-salt"),
+      salt: encoder.encode(saltSecret),
       iterations: 100000,
       hash: "SHA-256",
     },
