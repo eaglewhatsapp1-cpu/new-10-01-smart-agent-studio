@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Key, Plus, Trash2, Check, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Key, Plus, Trash2, Check, Loader2, Shield } from 'lucide-react';
 
 interface ApiKeyProvider {
   id: string;
@@ -30,14 +30,14 @@ const API_PROVIDERS: ApiKeyProvider[] = [
   { id: 'custom', name: 'Custom Provider', description: 'Other API providers' },
 ];
 
-interface WorkspaceApiKey {
+interface SecureApiKey {
   id: string;
   workspace_id: string;
   provider: string;
-  api_key_encrypted: string;
   display_name: string | null;
   is_active: boolean;
   created_at: string;
+  masked_key: string;
 }
 
 export const ApiKeyManager: React.FC = () => {
@@ -47,60 +47,56 @@ export const ApiKeyManager: React.FC = () => {
   const [selectedProvider, setSelectedProvider] = useState<string>('');
   const [apiKey, setApiKey] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [showKey, setShowKey] = useState<Record<string, boolean>>({});
-  const [editingKey, setEditingKey] = useState<WorkspaceApiKey | null>(null);
+  const [editingKeyId, setEditingKeyId] = useState<string | null>(null);
 
-  // Fetch existing API keys
+  // Fetch API keys via edge function (returns masked keys only)
   const { data: apiKeys, isLoading } = useQuery({
     queryKey: ['workspace-api-keys', currentWorkspace?.id],
     queryFn: async () => {
       if (!currentWorkspace?.id) return [];
-      const { data, error } = await supabase
-        .from('workspace_api_keys')
-        .select('*')
-        .eq('workspace_id', currentWorkspace.id)
-        .order('created_at', { ascending: false });
       
-      if (error) throw error;
-      return data as WorkspaceApiKey[];
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await supabase.functions.invoke('manage-api-keys', {
+        body: { action: 'list', workspace_id: currentWorkspace.id }
+      });
+
+      if (response.error) throw response.error;
+      return (response.data?.keys || []) as SecureApiKey[];
     },
     enabled: !!currentWorkspace?.id,
   });
 
-  // Save API key mutation
+  // Save API key via edge function (encrypts on server)
   const saveMutation = useMutation({
-    mutationFn: async ({ provider, apiKeyValue, name }: { provider: string; apiKeyValue: string; name?: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !currentWorkspace?.id) throw new Error('Not authenticated');
+    mutationFn: async ({ provider, apiKeyValue, name, keyId }: { 
+      provider: string; 
+      apiKeyValue: string; 
+      name?: string;
+      keyId?: string;
+    }) => {
+      if (!currentWorkspace?.id) throw new Error('No workspace selected');
 
-      if (editingKey) {
-        // Update existing key
-        const { error } = await supabase
-          .from('workspace_api_keys')
-          .update({
-            api_key_encrypted: apiKeyValue,
-            display_name: name || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', editingKey.id);
-        if (error) throw error;
-      } else {
-        // Insert new key (upsert)
-        const { error } = await supabase
-          .from('workspace_api_keys')
-          .upsert({
-            workspace_id: currentWorkspace.id,
-            provider,
-            api_key_encrypted: apiKeyValue,
-            display_name: name || null,
-            created_by: user.id,
-          }, { onConflict: 'workspace_id,provider' });
-        if (error) throw error;
-      }
+      const action = keyId ? 'update' : 'create';
+      const response = await supabase.functions.invoke('manage-api-keys', {
+        body: { 
+          action,
+          workspace_id: currentWorkspace.id,
+          provider,
+          api_key: apiKeyValue,
+          display_name: name || null,
+          key_id: keyId
+        }
+      });
+
+      if (response.error) throw response.error;
+      if (response.data?.error) throw new Error(response.data.error);
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-api-keys'] });
-      toast.success(editingKey ? 'API key updated' : 'API key saved');
+      toast.success(editingKeyId ? 'API key updated securely' : 'API key saved securely');
       closeDialog();
     },
     onError: (error) => {
@@ -108,14 +104,21 @@ export const ApiKeyManager: React.FC = () => {
     },
   });
 
-  // Delete API key mutation
+  // Delete API key via edge function
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('workspace_api_keys')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
+    mutationFn: async (keyId: string) => {
+      if (!currentWorkspace?.id) throw new Error('No workspace selected');
+
+      const response = await supabase.functions.invoke('manage-api-keys', {
+        body: { 
+          action: 'delete',
+          workspace_id: currentWorkspace.id,
+          key_id: keyId
+        }
+      });
+
+      if (response.error) throw response.error;
+      if (response.data?.error) throw new Error(response.data.error);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-api-keys'] });
@@ -131,7 +134,7 @@ export const ApiKeyManager: React.FC = () => {
     setSelectedProvider('');
     setApiKey('');
     setDisplayName('');
-    setEditingKey(null);
+    setEditingKeyId(null);
   };
 
   const handleSave = () => {
@@ -139,14 +142,19 @@ export const ApiKeyManager: React.FC = () => {
       toast.error('Please select a provider and enter an API key');
       return;
     }
-    saveMutation.mutate({ provider: selectedProvider, apiKeyValue: apiKey, name: displayName });
+    saveMutation.mutate({ 
+      provider: selectedProvider, 
+      apiKeyValue: apiKey, 
+      name: displayName,
+      keyId: editingKeyId || undefined
+    });
   };
 
-  const handleEdit = (key: WorkspaceApiKey) => {
-    setEditingKey(key);
+  const handleEdit = (key: SecureApiKey) => {
+    setEditingKeyId(key.id);
     setSelectedProvider(key.provider);
     setDisplayName(key.display_name || '');
-    setApiKey(''); // Don't show existing key for security
+    setApiKey(''); // Never show existing key
     setIsDialogOpen(true);
   };
 
@@ -154,17 +162,20 @@ export const ApiKeyManager: React.FC = () => {
     return API_PROVIDERS.find(p => p.id === providerId) || { id: providerId, name: providerId, description: '' };
   };
 
-  const maskKey = (key: string) => {
-    if (key.length <= 8) return '••••••••';
-    return key.substring(0, 4) + '••••••••' + key.substring(key.length - 4);
-  };
-
   const availableProviders = API_PROVIDERS.filter(
-    p => !apiKeys?.some(k => k.provider === p.id) || editingKey?.provider === p.id
+    p => !apiKeys?.some(k => k.provider === p.id) || (editingKeyId && apiKeys?.find(k => k.id === editingKeyId)?.provider === p.id)
   );
 
   return (
     <div className="space-y-4">
+      {/* Security notice */}
+      <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+        <Shield className="h-4 w-4 text-primary" />
+        <p className="text-xs text-muted-foreground">
+          API keys are encrypted server-side and never exposed to the client.
+        </p>
+      </div>
+
       {/* Header with Add button */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
@@ -213,7 +224,7 @@ export const ApiKeyManager: React.FC = () => {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground font-mono">
-                      {showKey[key.id] ? key.api_key_encrypted : maskKey(key.api_key_encrypted)}
+                      {key.masked_key}
                     </p>
                   </div>
                 </div>
@@ -222,15 +233,8 @@ export const ApiKeyManager: React.FC = () => {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={() => setShowKey(prev => ({ ...prev, [key.id]: !prev[key.id] }))}
-                  >
-                    {showKey[key.id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
                     onClick={() => handleEdit(key)}
+                    title="Update key"
                   >
                     <Key className="h-4 w-4" />
                   </Button>
@@ -239,6 +243,7 @@ export const ApiKeyManager: React.FC = () => {
                     size="icon"
                     className="h-8 w-8 text-destructive hover:text-destructive"
                     onClick={() => deleteMutation.mutate(key.id)}
+                    title="Delete key"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -253,11 +258,11 @@ export const ApiKeyManager: React.FC = () => {
       <Dialog open={isDialogOpen} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingKey ? 'Update API Key' : 'Add API Key'}</DialogTitle>
+            <DialogTitle>{editingKeyId ? 'Update API Key' : 'Add API Key'}</DialogTitle>
             <DialogDescription>
-              {editingKey 
-                ? 'Enter a new API key to replace the existing one.'
-                : 'Select a provider and enter your API key. Keys are stored securely.'}
+              {editingKeyId 
+                ? 'Enter a new API key to replace the existing one. The key will be encrypted before storage.'
+                : 'Select a provider and enter your API key. Keys are encrypted server-side before storage.'}
             </DialogDescription>
           </DialogHeader>
           
@@ -267,7 +272,7 @@ export const ApiKeyManager: React.FC = () => {
               <Select 
                 value={selectedProvider} 
                 onValueChange={setSelectedProvider}
-                disabled={!!editingKey}
+                disabled={!!editingKeyId}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a provider" />
@@ -291,9 +296,13 @@ export const ApiKeyManager: React.FC = () => {
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder={editingKey ? 'Enter new API key' : 'sk-...'}
+                placeholder={editingKeyId ? 'Enter new API key' : 'sk-...'}
                 className="font-mono"
               />
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Shield className="h-3 w-3" />
+                Encrypted with AES-256-GCM before storage
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -315,7 +324,7 @@ export const ApiKeyManager: React.FC = () => {
               disabled={saveMutation.isPending || !selectedProvider || !apiKey}
             >
               {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {editingKey ? 'Update' : 'Save'}
+              {editingKeyId ? 'Update' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>
