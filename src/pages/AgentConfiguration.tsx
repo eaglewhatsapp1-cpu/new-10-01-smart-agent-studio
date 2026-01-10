@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 
 import { AgentLifecycleSettings } from '@/components/scheduling/AgentLifecycleSettings';
+import { ResponsePreviewPanel } from '@/components/agent/ResponsePreviewPanel';
 
 type CoreModel = 'core_analyst' | 'core_reviewer' | 'core_synthesizer';
 type CreativityLevel = 'none' | 'very_low' | 'low' | 'medium' | 'high';
@@ -674,6 +675,12 @@ export const AgentConfiguration: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Response Preview Panel */}
+        <ResponsePreviewPanel 
+          responseRules={formData.response_rules}
+          agentName={formData.display_name || 'Agent'}
+        />
 
         {/* Agent Lifecycle Section */}
         <AgentLifecycleSettings
