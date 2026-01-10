@@ -29,6 +29,8 @@ import {
 } from 'lucide-react';
 
 import { AgentLifecycleSettings } from '@/components/scheduling/AgentLifecycleSettings';
+import { KnowledgeFolderSelector } from '@/components/agent/KnowledgeFolderSelector';
+import { ResponsePreviewPanel } from '@/components/agent/ResponsePreviewPanel';
 
 type CoreModel = 'core_analyst' | 'core_reviewer' | 'core_synthesizer';
 type CreativityLevel = 'none' | 'very_low' | 'low' | 'medium' | 'high';
@@ -484,19 +486,15 @@ export const AgentConfiguration: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-4 rounded-lg bg-muted/50 border border-dashed border-border">
-              <div className="flex items-center gap-2 justify-center mb-2">
-                <Database className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium text-muted-foreground">Knowledge Base Access</span>
-              </div>
-              <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                Folder access is configured per-workflow in the <span className="font-medium text-foreground">Multi-Agent Canvas</span>. 
-                This allows different workflows to use different knowledge sources with the same agent, 
-                providing flexibility for various use cases.
-              </p>
-            </div>
           </CardContent>
         </Card>
+
+        {/* Knowledge Folder Access */}
+        <KnowledgeFolderSelector
+          selectedFolders={formData.allowed_folders}
+          onFoldersChange={(folders) => setFormData({ ...formData, allowed_folders: folders })}
+          workspaceId={currentWorkspace?.id}
+        />
 
         {/* RAG Governance Policy Section */}
         <Card className="cyber-border lg:col-span-2">
@@ -674,6 +672,9 @@ export const AgentConfiguration: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Response Preview Panel */}
+        <ResponsePreviewPanel responseRules={formData.response_rules} />
 
         {/* Agent Lifecycle Section */}
         <AgentLifecycleSettings
