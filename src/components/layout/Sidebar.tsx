@@ -110,7 +110,7 @@ export const Sidebar: React.FC = () => {
       <nav className="flex-1 space-y-1 overflow-y-auto p-4 scrollbar-modern">
         {navItems.map(item => {
         const isActive = location.pathname === item.path || item.path !== '/' && location.pathname.startsWith(item.path);
-        return <Link key={item.path} to={item.path} className="">
+        return <Link key={item.path} to={item.path} className={cn('group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all', isActive ? 'bg-primary text-primary-foreground glow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
               <item.icon className={cn('h-5 w-5 transition-colors', isActive ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-primary')} />
               {item.label}
             </Link>;
