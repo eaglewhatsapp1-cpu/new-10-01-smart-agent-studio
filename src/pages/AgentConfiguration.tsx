@@ -31,6 +31,9 @@ import {
 import { AgentLifecycleSettings } from '@/components/scheduling/AgentLifecycleSettings';
 import { KnowledgeFolderSelector } from '@/components/agent/KnowledgeFolderSelector';
 import { ResponsePreviewPanel } from '@/components/agent/ResponsePreviewPanel';
+import { ConfigurationCompatibilityChecker } from '@/components/agent/ConfigurationCompatibilityChecker';
+import { AgentTestChatDialog } from '@/components/agent/AgentTestChatDialog';
+import type { ResponseRules, ReworkSettings } from '@/types';
 
 type CoreModel = 'core_analyst' | 'core_reviewer' | 'core_synthesizer';
 type CreativityLevel = 'none' | 'very_low' | 'low' | 'medium' | 'high';
@@ -54,11 +57,8 @@ interface AgentFormData {
     hallucination_tolerance: string;
     creativity_level: CreativityLevel;
   };
-  response_rules: {
-    step_by_step: boolean;
-    cite_if_possible: boolean;
-    refuse_if_uncertain: boolean;
-  };
+  response_rules: ResponseRules;
+  rework_settings: ReworkSettings;
 }
 
 const defaultFormData: AgentFormData = {
@@ -84,6 +84,16 @@ const defaultFormData: AgentFormData = {
     step_by_step: true,
     cite_if_possible: true,
     refuse_if_uncertain: true,
+    include_confidence_scores: false,
+    use_bullet_points: false,
+    summarize_at_end: false,
+    custom_response_template: null,
+  },
+  rework_settings: {
+    enabled: true,
+    max_retries: 2,
+    minimum_score_threshold: 70,
+    auto_correct: true,
   },
 };
 

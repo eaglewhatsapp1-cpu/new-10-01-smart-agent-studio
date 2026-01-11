@@ -14,6 +14,48 @@ export interface ResponseRules {
   step_by_step: boolean;
   cite_if_possible: boolean;
   refuse_if_uncertain: boolean;
+  include_confidence_scores: boolean;
+  use_bullet_points: boolean;
+  summarize_at_end: boolean;
+  custom_response_template: string | null;
+}
+
+export interface ValidationScore {
+  overall_score: number;
+  structure_score: number;
+  rules_score: number;
+  quality_score: number;
+  issues: ValidationIssue[];
+  passed: boolean;
+}
+
+export interface ValidationIssue {
+  type: 'structure' | 'rules' | 'compatibility';
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  suggestion: string;
+  rule_name?: string;
+}
+
+export interface CompatibilityCheck {
+  is_compatible: boolean;
+  score: number;
+  mismatches: CompatibilityMismatch[];
+  recommendations: string[];
+}
+
+export interface CompatibilityMismatch {
+  rule_name: string;
+  rule_enabled: boolean;
+  template_has_placeholder: boolean;
+  issue: string;
+}
+
+export interface ReworkSettings {
+  enabled: boolean;
+  max_retries: number;
+  minimum_score_threshold: number;
+  auto_correct: boolean;
 }
 
 export interface KnowledgeFolder {
