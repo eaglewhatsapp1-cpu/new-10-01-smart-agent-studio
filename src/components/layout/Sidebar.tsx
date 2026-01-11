@@ -48,12 +48,12 @@ export const Sidebar: React.FC = () => {
   // Use (interact with agents)
   {
     path: '/ai-chat',
-    label: 'AI Chat',
-    icon: Sparkles
+    label: 'AI Assistant',
+    icon: HelpCircle
   }, {
     path: '/agent-test',
-    label: t.sidebar.agentTestChat,
-    icon: MessageSquare
+    label: 'Agent Test Lab',
+    icon: Sparkles
   },
   // Share & Discover
   {
