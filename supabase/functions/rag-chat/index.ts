@@ -8,7 +8,7 @@ const corsHeaders = {
 
 // =============================================================================
 // AGENTIC RAG 2.0 - Advanced AI Features Implementation
-// Features: ReAct Pattern, Adaptive Retrieval, Agent Memory, Tool Calling
+// Features: ReAct Pattern, Adaptive Retrieval, Agent Memory, Tool Calling, Re-work Loop
 // =============================================================================
 
 interface Citation {
@@ -34,6 +34,21 @@ interface AgentTool {
   description: string;
   tool_type: string;
   config: any;
+}
+
+interface ReworkSettings {
+  enabled: boolean;
+  max_retries: number;
+  minimum_score_threshold: number;
+  auto_correct: boolean;
+}
+
+interface ValidationScore {
+  overall_score: number;
+  structure_score: number;
+  rules_score: number;
+  issues: { type: string; severity: string; message: string }[];
+  passed: boolean;
 }
 
 type QueryComplexity = 'simple' | 'moderate' | 'complex' | 'conversational';
@@ -839,6 +854,191 @@ Check each factual claim in the response against the sources.`
 }
 
 // =============================================================================
+// RESPONSE VALIDATION - Check template and rules compliance
+// =============================================================================
+function validateResponseCompliance(
+  response: string,
+  responseRules: any,
+  customTemplate: string | null
+): ValidationScore {
+  const issues: { type: string; severity: string; message: string }[] = [];
+  let structureScore = 100;
+  let rulesScore = 100;
+  
+  // Check each enabled rule
+  if (responseRules?.step_by_step === true) {
+    const hasSteps = /step[\s-]*\d|^[\s]*\d+[.):]/im.test(response) || 
+                     /^[\s]*[-•*]\s/m.test(response) ||
+                     /first.*then|next.*after/i.test(response);
+    if (!hasSteps) {
+      issues.push({ type: 'rules', severity: 'warning', message: 'Missing step-by-step structure' });
+      rulesScore -= 15;
+    }
+  }
+  
+  if (responseRules?.cite_if_possible === true) {
+    const hasCitations = /\[Source\s*\d+\]/i.test(response) || /\[\d+\]/i.test(response);
+    if (!hasCitations) {
+      issues.push({ type: 'rules', severity: 'warning', message: 'Missing source citations' });
+      rulesScore -= 15;
+    }
+  }
+  
+  if (responseRules?.include_confidence_scores === true) {
+    const hasConfidence = /confidence[:\s]*\d+%?|(\d+%\s*confident)/i.test(response);
+    if (!hasConfidence) {
+      issues.push({ type: 'rules', severity: 'warning', message: 'Missing confidence score' });
+      rulesScore -= 10;
+    }
+  }
+  
+  if (responseRules?.use_bullet_points === true) {
+    const hasBullets = /^[\s]*[-•*]\s/m.test(response);
+    if (!hasBullets) {
+      issues.push({ type: 'rules', severity: 'info', message: 'Could use more bullet points' });
+      rulesScore -= 5;
+    }
+  }
+  
+  if (responseRules?.summarize_at_end === true) {
+    const hasSummary = /summary|to summarize|in conclusion|key takeaways/i.test(response);
+    if (!hasSummary) {
+      issues.push({ type: 'rules', severity: 'warning', message: 'Missing summary section' });
+      rulesScore -= 10;
+    }
+  }
+  
+  // Check template compliance if custom template is provided
+  if (customTemplate) {
+    const templatePlaceholders = customTemplate.match(/\{[A-Z_]+\}/g) || [];
+    const placeholderChecks: Record<string, RegExp> = {
+      '{ANALYSIS}': /analysis|findings|based on/i,
+      '{STEPS}': /step[\s-]*\d|^[\s]*\d+[.):]/im,
+      '{SOURCES}': /\[Source\s*\d+\]|\[ref/i,
+      '{CONFIDENCE}': /confidence[:\s]*\d+%?/i,
+      '{SUMMARY}': /summary|conclusion/i,
+      '{BULLETS}': /^[\s]*[-•*]\s/m,
+    };
+    
+    let matchedPlaceholders = 0;
+    for (const placeholder of templatePlaceholders) {
+      const check = placeholderChecks[placeholder];
+      if (check && check.test(response)) {
+        matchedPlaceholders++;
+      } else if (check) {
+        structureScore -= 10;
+        issues.push({ 
+          type: 'structure', 
+          severity: 'warning', 
+          message: `Missing content for template placeholder: ${placeholder}` 
+        });
+      }
+    }
+    
+    if (templatePlaceholders.length > 0) {
+      structureScore = Math.max(0, (matchedPlaceholders / templatePlaceholders.length) * 100);
+    }
+  }
+  
+  const overallScore = Math.round((structureScore + rulesScore) / 2);
+  
+  return {
+    overall_score: Math.max(0, Math.min(100, overallScore)),
+    structure_score: Math.max(0, structureScore),
+    rules_score: Math.max(0, rulesScore),
+    issues,
+    passed: overallScore >= 70
+  };
+}
+
+// =============================================================================
+// RE-WORK LOOP - Correct responses that don't meet quality threshold
+// =============================================================================
+async function reworkResponse(
+  originalResponse: string,
+  validationScore: ValidationScore,
+  responseRules: any,
+  customTemplate: string | null,
+  systemPrompt: string,
+  messages: any[],
+  maxRetries: number
+): Promise<{ response: string; attempts: number; finalScore: ValidationScore }> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  
+  if (!LOVABLE_API_KEY) {
+    return { response: originalResponse, attempts: 0, finalScore: validationScore };
+  }
+  
+  let currentResponse = originalResponse;
+  let currentScore = validationScore;
+  let attempts = 0;
+  
+  while (attempts < maxRetries && !currentScore.passed) {
+    attempts++;
+    console.log(`Re-work attempt ${attempts}: Current score ${currentScore.overall_score}`);
+    
+    // Build correction prompt
+    const issuesList = currentScore.issues.map(i => `- ${i.message}`).join('\n');
+    const correctionInstructions = `
+Your previous response scored ${currentScore.overall_score}/100 on template compliance.
+
+Issues found:
+${issuesList}
+
+Please revise your response to fix these issues:
+${currentScore.issues.map((issue, i) => `${i + 1}. ${issue.message}`).join('\n')}
+
+${customTemplate ? `Follow this exact structure:\n${customTemplate}` : ''}
+
+Requirements:
+${responseRules?.step_by_step ? '- Use numbered steps or bullet points for clarity' : ''}
+${responseRules?.cite_if_possible ? '- Include [Source N] citations for key facts' : ''}
+${responseRules?.include_confidence_scores ? '- Add a confidence percentage (e.g., "Confidence: 85%")' : ''}
+${responseRules?.use_bullet_points ? '- Use bullet points for key information' : ''}
+${responseRules?.summarize_at_end ? '- End with a brief summary section' : ''}
+
+Original response to improve:
+${currentResponse}
+`;
+
+    try {
+      const reworkRequest = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: systemPrompt + "\n\nIMPORTANT: You are correcting a previous response that didn't meet quality standards." },
+            ...messages.slice(-4),
+            { role: "user", content: correctionInstructions }
+          ],
+          max_tokens: 2500,
+        }),
+      });
+
+      if (reworkRequest.ok) {
+        const data = await reworkRequest.json();
+        const newResponse = data.choices?.[0]?.message?.content || "";
+        
+        if (newResponse.length > 50) {
+          currentResponse = newResponse;
+          currentScore = validateResponseCompliance(newResponse, responseRules, customTemplate);
+          console.log(`Re-work attempt ${attempts} new score: ${currentScore.overall_score}`);
+        }
+      }
+    } catch (error) {
+      console.error(`Re-work attempt ${attempts} error:`, error);
+      break;
+    }
+  }
+  
+  return { response: currentResponse, attempts, finalScore: currentScore };
+}
+
+// =============================================================================
 // MEMORY EXTRACTION - Learn from conversations
 // =============================================================================
 async function extractMemoryFromConversation(
@@ -1043,8 +1243,18 @@ serve(async (req) => {
       enable_hallucination_check = true,
       enable_adaptive_strategy = true,
       max_reasoning_steps = 5,
-      stream = false
+      stream = false,
+      rework_settings,
+      custom_response_template
     } = await req.json();
+    
+    // Parse rework settings with defaults
+    const reworkConfig: ReworkSettings = rework_settings || {
+      enabled: true,
+      max_retries: 2,
+      minimum_score_threshold: 70,
+      auto_correct: true
+    };
     
     // Input validation
     if (!messages || !Array.isArray(messages)) {
@@ -1172,6 +1382,21 @@ serve(async (req) => {
         if (rules.refuse_if_uncertain === true) {
           systemPrompt += `\n- Refuse if uncertain: Acknowledge when you don't have enough information rather than guessing`;
         }
+        if (rules.include_confidence_scores === true) {
+          systemPrompt += `\n- Include confidence score: Add a confidence percentage (e.g., "Confidence: 85%") at the end of your response`;
+        }
+        if (rules.use_bullet_points === true) {
+          systemPrompt += `\n- Use bullet points: Format key information as bullet points for easy scanning`;
+        }
+        if (rules.summarize_at_end === true) {
+          systemPrompt += `\n- Summarize at end: Include a brief summary section at the end of your response`;
+        }
+      }
+      
+      // Apply custom response template if provided
+      const templateToUse = custom_response_template || agentConfig?.response_rules?.custom_response_template;
+      if (templateToUse) {
+        systemPrompt += `\n\n## RESPONSE TEMPLATE\nStructure your response following this template:\n${templateToUse}`;
       }
       
       systemPrompt += `\n\nUse the provided context to answer questions.\n\n=== CONTEXT ===\n${context}\n=== END CONTEXT ===`;
@@ -1218,7 +1443,44 @@ serve(async (req) => {
       }
     }
 
-    // Step 5: Hallucination detection
+    // Step 5: Response Validation and Re-work Loop
+    let validationResult: ValidationScore = { overall_score: 100, structure_score: 100, rules_score: 100, issues: [], passed: true };
+    let reworkAttempts = 0;
+    
+    if (response && agentConfig?.response_rules) {
+      validationResult = validateResponseCompliance(
+        response, 
+        agentConfig.response_rules, 
+        custom_response_template || agentConfig.response_rules.custom_response_template
+      );
+      console.log(`Initial validation score: ${validationResult.overall_score}`);
+      
+      // Apply re-work loop if enabled and score is below threshold
+      if (reworkConfig.enabled && reworkConfig.auto_correct && !validationResult.passed) {
+        console.log(`Starting re-work loop (threshold: ${reworkConfig.minimum_score_threshold})`);
+        
+        // Build a simplified system prompt for re-work
+        let reworkSystemPrompt = agentConfig?.persona || "You are a helpful AI assistant.";
+        if (agentConfig?.role_description) reworkSystemPrompt += `\nRole: ${agentConfig.role_description}`;
+        
+        const reworkResult = await reworkResponse(
+          response,
+          validationResult,
+          agentConfig.response_rules,
+          custom_response_template || agentConfig.response_rules.custom_response_template,
+          reworkSystemPrompt,
+          messages,
+          reworkConfig.max_retries
+        );
+        
+        response = reworkResult.response;
+        reworkAttempts = reworkResult.attempts;
+        validationResult = reworkResult.finalScore;
+        console.log(`Re-work complete after ${reworkAttempts} attempts. Final score: ${validationResult.overall_score}`);
+      }
+    }
+
+    // Step 6: Hallucination detection
     let hallucinationCheck = { detected: false, details: [] as any[], confidence: 0.5 };
     if (enable_hallucination_check && chunks.length > 0) {
       hallucinationCheck = await detectHallucinations(response, chunks, userMessage);
@@ -1299,6 +1561,14 @@ serve(async (req) => {
         response,
         citations,
         confidence,
+        validation: {
+          score: validationResult.overall_score,
+          structure_score: validationResult.structure_score,
+          rules_score: validationResult.rules_score,
+          passed: validationResult.passed,
+          issues: validationResult.issues,
+          rework_attempts: reworkAttempts
+        },
         metadata: {
           strategy_used: strategy,
           query_complexity: complexity,
@@ -1307,7 +1577,9 @@ serve(async (req) => {
           hallucination_detected: hallucinationCheck.detected,
           hallucination_count: hallucinationCheck.details.length,
           memory_items_used: userMemory.length,
-          total_latency_ms: totalLatency
+          total_latency_ms: totalLatency,
+          rework_enabled: reworkConfig.enabled,
+          rework_threshold: reworkConfig.minimum_score_threshold
         },
         reasoning_trace: reasoningSteps.map(s => ({
           type: s.step_type,

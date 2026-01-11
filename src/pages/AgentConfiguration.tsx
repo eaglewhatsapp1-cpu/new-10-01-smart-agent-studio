@@ -168,6 +168,16 @@ export const AgentConfiguration: React.FC = () => {
           step_by_step: responseRules.step_by_step ?? true,
           cite_if_possible: responseRules.cite_if_possible ?? true,
           refuse_if_uncertain: responseRules.refuse_if_uncertain ?? true,
+          include_confidence_scores: responseRules.include_confidence_scores ?? false,
+          use_bullet_points: responseRules.use_bullet_points ?? false,
+          summarize_at_end: responseRules.summarize_at_end ?? false,
+          custom_response_template: responseRules.custom_response_template ?? null,
+        },
+        rework_settings: {
+          enabled: true,
+          max_retries: 2,
+          minimum_score_threshold: 70,
+          auto_correct: true,
         },
       });
     }
@@ -241,7 +251,7 @@ export const AgentConfiguration: React.FC = () => {
         active_until: formData.active_until,
         active_days: formData.active_days,
         rag_policy: formData.rag_policy,
-        response_rules: formData.response_rules,
+        response_rules: formData.response_rules as unknown as Record<string, unknown>,
       };
 
       if (isNew) {
@@ -250,11 +260,11 @@ export const AgentConfiguration: React.FC = () => {
           created_by: userData.user.id,
           workspace_id: currentWorkspace?.id || null,
         };
-        const { error } = await supabase.from('ai_profiles').insert(insertPayload);
+        const { error } = await supabase.from('ai_profiles').insert([insertPayload] as any);
         if (error) throw error;
         toast({ title: 'Success', description: 'Agent created successfully' });
       } else {
-        const { error } = await supabase.from('ai_profiles').update(payload).eq('id', id);
+        const { error } = await supabase.from('ai_profiles').update(payload as any).eq('id', id);
         if (error) throw error;
         toast({ title: 'Success', description: 'Agent updated successfully' });
       }
@@ -329,6 +339,21 @@ export const AgentConfiguration: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <AgentTestChatDialog
+            formData={{
+              display_name: formData.display_name,
+              persona: formData.persona,
+              role_description: formData.role_description,
+              intro_sentence: formData.intro_sentence,
+              core_model: formData.core_model,
+              allowed_folders: formData.allowed_folders,
+              rag_policy: formData.rag_policy,
+              response_rules: formData.response_rules,
+            }}
+            reworkSettings={formData.rework_settings}
+            workspaceId={currentWorkspace?.id || null}
+            isCompatible={true}
+          />
           <Button variant="outline" onClick={handleExport} className="gap-2">
             <Download className="h-4 w-4" />
             Export
@@ -647,7 +672,7 @@ export const AgentConfiguration: React.FC = () => {
               <Label className="text-xs text-muted-foreground uppercase tracking-wider mb-4 block">
                 Response Rules
               </Label>
-              <div className="flex flex-wrap gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="flex items-center gap-2">
                   <Switch
                     checked={formData.response_rules.step_by_step}
@@ -678,13 +703,126 @@ export const AgentConfiguration: React.FC = () => {
                   />
                   <Label className="text-sm">Refuse If Uncertain</Label>
                 </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={formData.response_rules.include_confidence_scores}
+                    onCheckedChange={(val) => setFormData(prev => ({
+                      ...prev,
+                      response_rules: { ...prev.response_rules, include_confidence_scores: val }
+                    }))}
+                  />
+                  <Label className="text-sm">Include Confidence Scores</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={formData.response_rules.use_bullet_points}
+                    onCheckedChange={(val) => setFormData(prev => ({
+                      ...prev,
+                      response_rules: { ...prev.response_rules, use_bullet_points: val }
+                    }))}
+                  />
+                  <Label className="text-sm">Use Bullet Points</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={formData.response_rules.summarize_at_end}
+                    onCheckedChange={(val) => setFormData(prev => ({
+                      ...prev,
+                      response_rules: { ...prev.response_rules, summarize_at_end: val }
+                    }))}
+                  />
+                  <Label className="text-sm">Summarize at End</Label>
+                </div>
+              </div>
+            </div>
+
+            {/* Re-work Settings */}
+            <div className="border-t border-border/50 pt-4">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider mb-4 block">
+                Re-work Authority Settings
+              </Label>
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={formData.rework_settings.enabled}
+                    onCheckedChange={(val) => setFormData(prev => ({
+                      ...prev,
+                      rework_settings: { ...prev.rework_settings, enabled: val }
+                    }))}
+                  />
+                  <Label className="text-sm">Enable Auto Re-work</Label>
+                </div>
+                {formData.rework_settings.enabled && (
+                  <div className="grid md:grid-cols-2 gap-4 pl-6">
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <Label className="text-xs text-muted-foreground">Max Retries</Label>
+                        <span className="text-sm font-mono text-primary">{formData.rework_settings.max_retries}</span>
+                      </div>
+                      <Slider
+                        value={[formData.rework_settings.max_retries]}
+                        onValueChange={([val]) => setFormData(prev => ({
+                          ...prev,
+                          rework_settings: { ...prev.rework_settings, max_retries: val }
+                        }))}
+                        min={1}
+                        max={5}
+                        step={1}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <Label className="text-xs text-muted-foreground">Minimum Score Threshold</Label>
+                        <span className="text-sm font-mono text-primary">{formData.rework_settings.minimum_score_threshold}%</span>
+                      </div>
+                      <Slider
+                        value={[formData.rework_settings.minimum_score_threshold]}
+                        onValueChange={([val]) => setFormData(prev => ({
+                          ...prev,
+                          rework_settings: { ...prev.rework_settings, minimum_score_threshold: val }
+                        }))}
+                        min={50}
+                        max={95}
+                        step={5}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* Configuration Compatibility Checker */}
+        <ConfigurationCompatibilityChecker
+          responseRules={formData.response_rules}
+          onAutoFixTemplate={(template) => {
+            setFormData(prev => ({
+              ...prev,
+              response_rules: { ...prev.response_rules, custom_response_template: template }
+            }));
+          }}
+          onDisableMismatchedRules={(rulesToDisable) => {
+            setFormData(prev => ({
+              ...prev,
+              response_rules: {
+                ...prev.response_rules,
+                ...rulesToDisable
+              }
+            }));
+          }}
+        />
+
         {/* Response Preview Panel */}
-        <ResponsePreviewPanel responseRules={formData.response_rules} />
+        <ResponsePreviewPanel
+          responseRules={formData.response_rules}
+          onTemplateChange={(template) => setFormData(prev => ({
+            ...prev,
+            response_rules: { ...prev.response_rules, custom_response_template: template }
+          }))}
+        />
 
         {/* Agent Lifecycle Section */}
         <AgentLifecycleSettings
