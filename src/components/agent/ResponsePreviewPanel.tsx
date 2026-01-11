@@ -396,13 +396,22 @@ export const ResponsePreviewPanel: React.FC<ResponsePreviewPanelProps> = ({
 
           <TabsContent value="variables" className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Use these template variables in your custom template. They will be replaced with actual content during response generation.
+              Click a variable to insert it into your template (when editing).
             </p>
             <div className="grid gap-2">
               {TEMPLATE_VARIABLES.map((variable) => (
-                <div 
+                <button
                   key={variable.name}
-                  className="flex items-center justify-between p-2 rounded-lg bg-muted/30 border border-border/50"
+                  onClick={() => {
+                    if (isEditing) {
+                      setEditedTemplate(prev => prev + ' ' + variable.name);
+                      toast({ title: 'Inserted', description: `${variable.name} added to template` });
+                    } else {
+                      navigator.clipboard.writeText(variable.name);
+                      toast({ title: 'Copied', description: `${variable.name} copied to clipboard` });
+                    }
+                  }}
+                  className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/50 hover:bg-muted/50 hover:border-primary/50 transition-all text-left"
                 >
                   <div className="flex items-center gap-3">
                     <code className="text-xs bg-primary/20 px-2 py-1 rounded font-mono text-primary">
@@ -410,17 +419,8 @@ export const ResponsePreviewPanel: React.FC<ResponsePreviewPanelProps> = ({
                     </code>
                     <span className="text-sm text-muted-foreground">{variable.description}</span>
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => {
-                      navigator.clipboard.writeText(variable.name);
-                      toast({ title: 'Copied', description: `${variable.name} copied to clipboard` });
-                    }}
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
+                  <Copy className="h-3 w-3 text-muted-foreground" />
+                </button>
               ))}
             </div>
           </TabsContent>

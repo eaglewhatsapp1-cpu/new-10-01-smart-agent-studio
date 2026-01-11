@@ -4,32 +4,28 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { 
   Send, 
   Plus, 
   MessageSquare, 
   Bot, 
-  User, 
   Loader2,
-  Trash2,
   Sparkles,
-  Mic,
   StopCircle,
   RefreshCw,
-  Wand2
+  Wand2,
+  HelpCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { SmartSuggestions, generateSuggestions } from '@/components/chat/SmartSuggestions';
+import { SmartSuggestions, generatePageContextSuggestions } from '@/components/chat/SmartSuggestions';
 import { PromptRefinement, refinePrompt, usePromptRefinement } from '@/components/chat/PromptRefinement';
 import { ChatMessage, ChatMessageData } from '@/components/chat/ChatMessage';
-import { Citation } from '@/components/chat/CitationDisplay';
 
 interface Message extends ChatMessageData {
   conversationId?: string;
@@ -48,6 +44,7 @@ export const AIChat: React.FC = () => {
   const { t } = useApp();
   const { currentWorkspace } = useWorkspace();
   const { user } = useAuth();
+  const location = useLocation();
   const queryClient = useQueryClient();
   
   const [messages, setMessages] = useState<Message[]>([]);
@@ -55,10 +52,23 @@ export const AIChat: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [lastVisitedPath, setLastVisitedPath] = useState<string>('/dashboard');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const promptRefinement = usePromptRefinement();
+
+  // Track last visited path (before coming to AI Chat)
+  useEffect(() => {
+    const referrer = sessionStorage.getItem('lastVisitedPage');
+    if (referrer && referrer !== '/ai-chat') {
+      setLastVisitedPath(referrer);
+    }
+  }, []);
+
+  // Save current path when leaving
+  useEffect(() => {
+    sessionStorage.setItem('lastVisitedPage', location.pathname);
+  }, [location.pathname]);
 
   // Fetch conversations
   const { data: conversations } = useQuery({
@@ -76,28 +86,57 @@ export const AIChat: React.FC = () => {
     enabled: !!currentWorkspace,
   });
 
-  // Fetch agents
-  const { data: agents } = useQuery({
-    queryKey: ['agents-for-chat'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('ai_profiles')
-        .select('id, display_name, persona, role_description, intro_sentence, core_model')
-        .order('display_name');
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  // Generate smart suggestions based on conversation
+  // Generate smart suggestions based on last visited page
   const suggestions = useMemo(() => {
-    const selectedAgentData = agents?.find(a => a.id === selectedAgent);
-    return generateSuggestions(
-      messages.map(m => ({ role: m.role, content: m.content })),
-      selectedAgentData?.core_model,
-      selectedAgentData?.role_description
-    );
-  }, [messages, selectedAgent, agents]);
+    if (messages.length === 0) {
+      return generatePageContextSuggestions(lastVisitedPath);
+    }
+    
+    // Generate follow-up suggestions based on conversation
+    const lastAssistantMessage = [...messages].reverse().find(m => m.role === 'assistant');
+    if (lastAssistantMessage) {
+      return generateContextualFollowUps(lastAssistantMessage.content);
+    }
+    
+    return generatePageContextSuggestions(lastVisitedPath);
+  }, [messages, lastVisitedPath]);
+
+  // Helper function for contextual follow-ups
+  const generateContextualFollowUps = (response: string): string[] => {
+    const followUps: string[] = [];
+    const responseLower = response.toLowerCase();
+    
+    if (responseLower.includes('step') || responseLower.includes('1.')) {
+      followUps.push("Can you elaborate on the first step?");
+    }
+    if (responseLower.includes('agent')) {
+      followUps.push("How do I configure the agent further?");
+    }
+    if (responseLower.includes('knowledge') || responseLower.includes('document')) {
+      followUps.push("What file formats are supported?");
+    }
+    if (responseLower.includes('workflow')) {
+      followUps.push("How do I run this workflow?");
+    }
+    
+    // Add generic follow-ups
+    while (followUps.length < 4) {
+      const generics = [
+        "Tell me more about this",
+        "Can you give me an example?",
+        "What's the next step?",
+        "Are there any best practices?"
+      ];
+      const next = generics[followUps.length];
+      if (next && !followUps.includes(next)) {
+        followUps.push(next);
+      } else {
+        break;
+      }
+    }
+    
+    return followUps.slice(0, 4);
+  };
 
   // Fetch messages for selected conversation
   const { data: conversationMessages } = useQuery({
@@ -124,30 +163,6 @@ export const AIChat: React.FC = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  // Create new conversation
-  const createConversation = useMutation({
-    mutationFn: async () => {
-      if (!currentWorkspace || !user) throw new Error('No workspace or user');
-      const { data, error } = await supabase
-        .from('chat_conversations')
-        .insert({
-          workspace_id: currentWorkspace.id,
-          agent_id: selectedAgent,
-          title: 'New Chat',
-          created_by: user.id,
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      setSelectedConversation(data.id);
-      setMessages([]);
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
-    },
-  });
 
   // Save message
   const saveMessage = async (conversationId: string, role: 'user' | 'assistant', content: string) => {
@@ -182,7 +197,6 @@ export const AIChat: React.FC = () => {
         .from('chat_conversations')
         .insert({
           workspace_id: currentWorkspace?.id,
-          agent_id: selectedAgent,
           title: userMessage.slice(0, 50) + (userMessage.length > 50 ? '...' : ''),
           created_by: user?.id,
         })
@@ -198,9 +212,6 @@ export const AIChat: React.FC = () => {
     if (conversationId) {
       await saveMessage(conversationId, 'user', userMessage);
     }
-
-    // Get agent config if selected
-    const agentConfig = selectedAgent ? agents?.find(a => a.id === selectedAgent) : null;
 
     // Get user's session token for authentication
     const { data: { session } } = await supabase.auth.getSession();
@@ -220,7 +231,7 @@ export const AIChat: React.FC = () => {
         },
         body: JSON.stringify({ 
           messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
-          agentConfig,
+          mode: 'assistant', // Platform assistant mode
         }),
       });
 
@@ -305,10 +316,9 @@ export const AIChat: React.FC = () => {
 
   const handleRefinePrompt = () => {
     if (!input.trim()) return;
-    const selectedAgentData = agents?.find(a => a.id === selectedAgent);
-    const refined = refinePrompt(input.trim(), selectedAgentData?.role_description);
+    const refined = refinePrompt(input.trim());
     if (refined !== input.trim()) {
-      promptRefinement.checkForRefinement(input.trim(), selectedAgentData?.role_description);
+      promptRefinement.checkForRefinement(input.trim());
     }
   };
 
@@ -317,7 +327,17 @@ export const AIChat: React.FC = () => {
     setMessages([]);
   };
 
-  const selectedAgentData = agents?.find(a => a.id === selectedAgent);
+  // Get friendly name for last visited page
+  const getPageName = (path: string): string => {
+    if (path.includes('knowledge')) return 'Knowledge Base';
+    if (path.includes('agents')) return 'Agents';
+    if (path.includes('multi-agent') || path.includes('workflow-canvas')) return 'Workflows';
+    if (path.includes('marketplace')) return 'Marketplace';
+    if (path.includes('team')) return 'Team';
+    if (path.includes('settings')) return 'Settings';
+    if (path.includes('analytics')) return 'Analytics';
+    return 'Dashboard';
+  };
 
   return (
     <div className="h-[calc(100vh-8rem)] flex gap-6">
@@ -332,22 +352,7 @@ export const AIChat: React.FC = () => {
           </div>
         </CardHeader>
         <CardContent className="flex-1 overflow-hidden p-0">
-          {/* Agent Selector */}
-          <div className="px-4 pb-3 border-b border-border">
-            <label className="text-xs text-muted-foreground mb-2 block">Select Agent</label>
-            <select
-              value={selectedAgent || ''}
-              onChange={(e) => setSelectedAgent(e.target.value || null)}
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="">Default Assistant</option>
-              {agents?.map(agent => (
-                <option key={agent.id} value={agent.id}>{agent.display_name}</option>
-              ))}
-            </select>
-          </div>
-          
-          <ScrollArea className="flex-1 h-[calc(100%-80px)]">
+          <ScrollArea className="flex-1 h-full">
             <div className="p-2 space-y-1">
               {conversations?.map(conv => (
                 <button
@@ -382,20 +387,15 @@ export const AIChat: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl bg-gradient-primary flex items-center justify-center">
-                <Sparkles className="h-5 w-5 text-white" />
+                <HelpCircle className="h-5 w-5 text-white" />
               </div>
               <div>
-                <CardTitle className="text-lg">
-                  {selectedAgentData?.display_name || 'AI Assistant'}
-                </CardTitle>
+                <CardTitle className="text-lg">AI Assistant</CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  {selectedAgentData?.role_description || 'Ready to help'}
+                  Platform help & guidance • Context: {getPageName(lastVisitedPath)}
                 </p>
               </div>
             </div>
-            {selectedAgentData && (
-              <Badge variant="secondary">{selectedAgentData.display_name}</Badge>
-            )}
           </div>
         </CardHeader>
 
@@ -407,9 +407,9 @@ export const AIChat: React.FC = () => {
                   <div className="h-16 w-16 rounded-2xl bg-gradient-primary flex items-center justify-center mb-4">
                     <Bot className="h-8 w-8 text-white" />
                   </div>
-                  <h3 className="font-semibold text-lg mb-1">Start a conversation</h3>
+                  <h3 className="font-semibold text-lg mb-1">How can I help you?</h3>
                   <p className="text-muted-foreground text-sm max-w-sm mb-4">
-                    Ask questions, get help with tasks, or explore your knowledge base.
+                    I can guide you through any feature of the platform. Ask me about agents, workflows, knowledge bases, and more!
                   </p>
                   <SmartSuggestions 
                     suggestions={suggestions}
@@ -419,97 +419,105 @@ export const AIChat: React.FC = () => {
                 </div>
               )}
               
-                {messages.map((message, index) => (
-                  <ChatMessage
-                    key={message.id || index}
-                    message={{
-                      ...message,
-                      conversationId: selectedConversation || undefined,
-                    }}
-                    showFeedback={!!message.id && !message.isStreaming}
-                  />
-                ))}
-                
-                {isTyping && messages[messages.length - 1]?.role === 'user' && !messages.some(m => m.isStreaming) && (
-                  <div className="flex gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <Bot className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="bg-muted rounded-2xl px-4 py-3">
-                      <div className="flex gap-1">
-                        <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </div>
+              {messages.map((message, index) => (
+                <ChatMessage
+                  key={message.id || index}
+                  message={{
+                    ...message,
+                    conversationId: selectedConversation || undefined,
+                  }}
+                  showFeedback={!!message.id && !message.isStreaming}
+                />
+              ))}
+              
+              {isTyping && messages[messages.length - 1]?.role === 'user' && !messages.some(m => m.isStreaming) && (
+                <div className="flex gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Bot className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="bg-muted rounded-2xl px-4 py-3">
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                     </div>
                   </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
-          </CardContent>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
+        </CardContent>
 
-          {/* Input */}
-          <div className="p-4 border-t border-border space-y-3">
-            {/* Smart Suggestions - show after conversation */}
-            {messages.length > 0 && !isLoading && (
-              <SmartSuggestions 
-                suggestions={suggestions}
-                onSelect={handleSuggestionSelect}
-                isLoading={isLoading}
-              />
-            )}
+        {/* Input */}
+        <div className="p-4 border-t border-border space-y-3">
+          {/* Smart Suggestions - show after conversation */}
+          {messages.length > 0 && !isLoading && (
+            <SmartSuggestions 
+              suggestions={suggestions}
+              onSelect={handleSuggestionSelect}
+              isLoading={isLoading}
+            />
+          )}
 
-            {/* Prompt Refinement */}
-            {promptRefinement.showRefinement && (
-              <PromptRefinement
-                originalPrompt={promptRefinement.pendingPrompt}
-                onAccept={(refined) => promptRefinement.acceptRefinement(refined, handleSend)}
-                onCancel={() => promptRefinement.cancelRefinement(handleSend)}
-                agentContext={agents?.find(a => a.id === selectedAgent)?.role_description}
-              />
-            )}
+          {/* Prompt Refinement */}
+          {promptRefinement.showRefinement && (
+            <PromptRefinement
+              originalPrompt={promptRefinement.pendingPrompt}
+              onAccept={(refined) => promptRefinement.acceptRefinement(refined, handleSend)}
+              onCancel={() => promptRefinement.cancelRefinement(handleSend)}
+            />
+          )}
 
-            <div className="flex gap-2">
-              <Textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                placeholder="Type your message... (Shift+Enter for new line)"
-                disabled={isLoading}
-                className="flex-1 min-h-[44px] max-h-32 resize-none"
-                rows={1}
-              />
+          <div className="flex gap-2">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder="Ask me how to use any feature... (Shift+Enter for new line)"
+              disabled={isLoading}
+              className="min-h-[60px] resize-none"
+            />
+            <div className="flex flex-col gap-2">
               {input.trim() && !isLoading && (
                 <Button 
                   variant="outline" 
                   onClick={handleRefinePrompt}
-                  className="h-11"
+                  size="icon"
+                  className="h-[28px] w-[60px]"
                   title="Refine prompt"
                 >
                   <Wand2 className="h-4 w-4" />
                 </Button>
               )}
               {isLoading ? (
-                <Button variant="destructive" onClick={handleStop} className="h-11">
+                <Button 
+                  variant="destructive" 
+                  onClick={handleStop}
+                  size="icon"
+                  className="h-[28px] w-[60px]"
+                >
                   <StopCircle className="h-4 w-4" />
                 </Button>
               ) : (
-                <Button onClick={() => handleSend()} disabled={!input.trim()} className="h-11">
+                <Button
+                  onClick={() => handleSend()}
+                  disabled={!input.trim()}
+                  size="icon"
+                  className="h-[28px] w-[60px]"
+                >
                   <Send className="h-4 w-4" />
                 </Button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              AI responses are generated using Lovable AI. Results may vary.
-            </p>
           </div>
-        </Card>
-      </div>
-    );
-  };
+        </div>
+      </Card>
+    </div>
+  );
+};
