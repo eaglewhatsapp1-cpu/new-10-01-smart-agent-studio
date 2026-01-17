@@ -154,7 +154,9 @@ serve(async (req) => {
     const userId = claimsData.claims.sub as string;
     console.log(`Authenticated user: ${userId}`);
 
-    const { messages, agentConfig } = await req.json();
+    const { messages, agentConfig, mode = 'assistant' } = await req.json();
+    
+    console.log(`Chat request - Mode: ${mode}, User: ${userId}, HasAgentConfig: ${!!agentConfig}`);
     
     // Validate input
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -221,36 +223,83 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Build system prompt with app help context and agent config
-    let systemPrompt = APP_HELP_CONTEXT;
-    
-    systemPrompt += `\n\n## RESPONSE GUIDELINES
+    // Build system prompt based on mode
+    let systemPrompt: string;
+
+    if (mode === 'agent' && agentConfig) {
+      // AGENT MODE: Use ONLY agent configuration, NO platform context
+      console.log('Building agent-only system prompt');
+      
+      systemPrompt = agentConfig.persona || "You are a specialized AI assistant.";
+      
+      if (agentConfig.role_description) {
+        systemPrompt += `\n\nYour Role: ${agentConfig.role_description}`;
+      }
+      
+      if (agentConfig.intro_sentence) {
+        systemPrompt += `\n\nWhen greeting users, use: "${agentConfig.intro_sentence}"`;
+      }
+      
+      // Apply response rules if present
+      if (agentConfig.response_rules) {
+        const rules = agentConfig.response_rules;
+        const rulesList: string[] = [];
+        
+        if (rules.step_by_step === true) {
+          rulesList.push('Use step-by-step reasoning when explaining complex topics');
+        }
+        if (rules.cite_if_possible === true) {
+          rulesList.push('Cite sources when available');
+        }
+        if (rules.refuse_if_uncertain === true) {
+          rulesList.push('Acknowledge uncertainty rather than guessing');
+        }
+        if (rules.include_confidence_scores === true) {
+          rulesList.push('Include confidence percentage in responses');
+        }
+        if (rules.use_bullet_points === true) {
+          rulesList.push('Format with bullet points for clarity');
+        }
+        if (rules.summarize_at_end === true) {
+          rulesList.push('Include a summary at the end of longer responses');
+        }
+        
+        if (rulesList.length > 0) {
+          systemPrompt += `\n\n## RESPONSE RULES\n${rulesList.map(r => `- ${r}`).join('\n')}`;
+        }
+        
+        if (rules.custom_response_template) {
+          systemPrompt += `\n\n## RESPONSE TEMPLATE\nFollow this format:\n${rules.custom_response_template}`;
+        }
+      }
+      
+      // Add general guidelines for agent mode
+      systemPrompt += `\n\n## GUIDELINES
+- Stay in character according to your persona
+- Answer based on your role and expertise
+- Be helpful, professional, and accurate
+- If you don't know something, say so honestly`;
+
+    } else {
+      // ASSISTANT MODE (default): Platform help with APP_HELP_CONTEXT
+      console.log('Building assistant system prompt with platform context');
+      
+      systemPrompt = APP_HELP_CONTEXT;
+      
+      // Optionally overlay agent context if provided (hybrid assistant mode)
+      if (agentConfig?.persona) {
+        systemPrompt += `\n\n## AGENT CONTEXT\nYou are also configured as: ${agentConfig.persona}`;
+        if (agentConfig.role_description) {
+          systemPrompt += `\nRole: ${agentConfig.role_description}`;
+        }
+      }
+      
+      systemPrompt += `\n\n## RESPONSE GUIDELINES
 - If the user asks about app features (how to create agents, workflows, etc.), provide clear step-by-step instructions
 - If the user asks domain questions, answer based on your knowledge
 - Be concise but thorough
 - Format with numbered lists and **bold** text for UI elements
 - If unsure about something, say so honestly`;
-    
-    if (agentConfig) {
-      systemPrompt += `\n\n## AGENT CONFIGURATION`;
-      if (agentConfig.persona) systemPrompt += `\nPersona: ${agentConfig.persona}`;
-      if (agentConfig.role_description) systemPrompt += `\nRole: ${agentConfig.role_description}`;
-      if (agentConfig.intro_sentence) systemPrompt += `\nIntroduction: ${agentConfig.intro_sentence}`;
-      
-      // Apply response rules from agent configuration
-      if (agentConfig.response_rules) {
-        const rules = agentConfig.response_rules;
-        systemPrompt += `\n\n## RESPONSE RULES`;
-        if (rules.step_by_step === true) {
-          systemPrompt += `\n- Use step-by-step reasoning: Break down complex answers into clear, numbered steps`;
-        }
-        if (rules.cite_if_possible === true) {
-          systemPrompt += `\n- Cite sources: Reference specific documents or knowledge when available`;
-        }
-        if (rules.refuse_if_uncertain === true) {
-          systemPrompt += `\n- Refuse if uncertain: Acknowledge when you don't have enough information rather than guessing`;
-        }
-      }
     }
 
     console.log(`Sending request to Lovable AI Gateway for user: ${userId}`);
